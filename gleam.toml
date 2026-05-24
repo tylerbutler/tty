@@ -4,15 +4,15 @@ description = "TTY and ANSI color-support detection for Gleam (Erlang + JavaScri
 licences = ["MIT", "Apache-2.0"]
 repository = { type = "github", user = "tylerbutler", repo = "tty" }
 links = [{ title = "NO_COLOR spec", href = "https://no-color.org" }]
-gleam = ">= 1.7.0"
+gleam = ">= 1.11.0"
 
-internal_modules = ["tty/internal"]
+internal_modules = []
 
 [javascript]
 typescript_declarations = true
 
 [dependencies]
-gleam_stdlib = ">= 0.40.0 and < 2.0.0"
+gleam_stdlib = ">= 0.40.0"
 
 [dev-dependencies]
-gleeunit = ">= 1.0.0 and < 2.0.0"
+startest = ">= 0.6.0 and < 1.0.0"
