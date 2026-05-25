@@ -1,12 +1,19 @@
 name = "tty"
-version = "1.0.0"
+version = "0.1.0"
 description = "TTY and ANSI color-support detection for Gleam (Erlang + JavaScript)"
 licences = ["MIT", "Apache-2.0"]
 repository = { type = "github", user = "tylerbutler", repo = "tty" }
 links = [{ title = "NO_COLOR spec", href = "https://no-color.org" }]
 gleam = ">= 1.11.0"
 
-internal_modules = []
+internal_modules = [
+  "tty_test",
+  "tty/color_level_helpers_test",
+  "tty/env_probe",
+  "tty/resolve_color_level_test",
+  "tty/resolve_color_test",
+  "tty/smoke_test",
+]
 
 [javascript]
 typescript_declarations = true

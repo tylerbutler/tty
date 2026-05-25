@@ -18,6 +18,8 @@ kinds:
       auto: patch
     - label: Changed
       auto: patch
+    - label: Breaking
+      auto: major
     - label: Reverted
       auto: patch
     - label: Dependencies

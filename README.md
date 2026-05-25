@@ -84,6 +84,8 @@ case color_level_at_least(detect_color_level(Stdout), Ansi256) {
 - **JavaScript target:** Node ≥ 20, or a Node-style runtime that provides
   `process.stdin`, `process.stdout`, `process.stderr`, and `process.env`
 
+For contributor setup, testing, and release workflow details, see [DEV.md](DEV.md).
+
 ## License
 
 Dual licensed under either of

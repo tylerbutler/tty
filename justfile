@@ -35,6 +35,10 @@ clean:
     rm -rf build
 
 # Full validation workflow
-ci: format lint test build
+ci: format lint test build docs
+
+# Build API documentation
+docs:
+    gleam docs build
 
 alias pr := ci
