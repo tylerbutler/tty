@@ -45,8 +45,8 @@ pub fn color_level_at_least(actual: ColorLevel, required: ColorLevel) -> Bool {
   color_level_to_int(actual) >= color_level_to_int(required)
 }
 
-/// Maps a `ColorLevel` to an integer rank (`NoColor`=0, `Basic`=1,
-/// `Ansi256`=2, `TrueColor`=3). Useful for comparisons and serialization.
+/// Maps a `ColorLevel` to a stable integer rank (`NoColor`=0, `Basic`=1,
+/// `Ansi256`=2, `TrueColor`=3). This mapping is part of the public API.
 pub fn color_level_to_int(level: ColorLevel) -> Int {
   case level {
     NoColor -> 0
@@ -80,8 +80,11 @@ pub fn detect_color_level(stream: Stream) -> ColorLevel {
   resolve_color_level(is_tty: is_tty(stream), env: get_env)
 }
 
-/// Pure color-support resolution. Exposed for testing; prefer
-/// `detect_color_level` for production use.
+/// Advanced color-resolution hook. Prefer `detect_color_level` for normal
+/// application code.
+///
+/// This API exists primarily for deterministic tests and custom integrations.
+/// The stable entrypoint for most users is `detect_color_level`.
 ///
 /// The `env` callback returns `Ok(value)` for a set environment variable,
 /// including `Ok("")` for a set-but-empty variable. Return `Error(Nil)` when
@@ -111,9 +114,8 @@ pub fn resolve_color_level(
   env env: fn(String) -> Result(String, Nil),
 ) -> ColorLevel {
   case env("NO_COLOR") {
-    Ok("") -> resolve_forced_or_tty(is_tty, env)
-    Ok(_) -> NoColor
-    Error(_) -> resolve_forced_or_tty(is_tty, env)
+    Ok(value) if value != "" -> NoColor
+    _ -> resolve_forced_or_tty(is_tty, env)
   }
 }
 
@@ -125,8 +127,8 @@ fn resolve_forced_or_tty(
     Ok(value) -> force_color_level(value)
     Error(_) ->
       case is_tty {
-        False -> NoColor
         True -> resolve_tty_color(env)
+        False -> NoColor
       }
   }
 }

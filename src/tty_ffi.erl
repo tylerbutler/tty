@@ -8,8 +8,8 @@ stderr_is_tty() -> tty_option_enabled(standard_io, stderr).
 %% io:getopts/1 is available on OTP 26+. On OTP 26+ the standard_io device
 %% reports per-stream TTY status via the stdin/stdout/stderr keys; the
 %% standard_error device does NOT carry those keys, so all three queries
-%% target standard_io. Unsupported runtimes, closed devices, and unexpected
-%% responses fall back to false so Gleam's Bool result is total.
+%% target standard_io. Known compatibility/runtime failures fall back to false
+%% so Gleam's Bool result is total.
 tty_option_enabled(Dev, Key) ->
     try io:getopts(Dev) of
         Opts when is_list(Opts) ->
@@ -17,7 +17,9 @@ tty_option_enabled(Dev, Key) ->
         _ ->
             false
     catch
-        _:_ ->
+        error:badarg ->
+            false;
+        error:undef ->
             false
     end.
 

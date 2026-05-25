@@ -8,16 +8,20 @@ function hasProcess() {
   return typeof process !== "undefined" && process !== null;
 }
 
+function streamIsTty(name) {
+  return hasProcess() && Boolean(process[name] && process[name].isTTY);
+}
+
 export function stdinIsTty() {
-  return hasProcess() && Boolean(process.stdin && process.stdin.isTTY);
+  return streamIsTty("stdin");
 }
 
 export function stdoutIsTty() {
-  return hasProcess() && Boolean(process.stdout && process.stdout.isTTY);
+  return streamIsTty("stdout");
 }
 
 export function stderrIsTty() {
-  return hasProcess() && Boolean(process.stderr && process.stderr.isTTY);
+  return streamIsTty("stderr");
 }
 
 // Returns the env-var value or `undefined`. The Gleam side decodes this

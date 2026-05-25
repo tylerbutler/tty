@@ -53,29 +53,17 @@ Set `FORCE_COLOR=1` (or any other supported value) to opt in explicitly.
 
 Honors the [`NO_COLOR`](https://no-color.org) standard and uses a precedence model inspired by [`chalk/supports-color`](https://github.com/chalk/supports-color).
 
-## Testing your color logic
+## Public API guidance
 
-`resolve_color_level` is exposed as a pure function so you can table-test
-your own rendering code without manipulating real environment variables
-or terminals. The `env` callback uses `Ok(value)` for a set variable
-(including `Ok("")` for a set-but-empty variable) and `Error(Nil)` for
-an unset variable:
+For 1.0, treat these as the primary stable APIs:
 
-```gleam
-import tty.{Ansi256, NoColor, resolve_color_level}
+- `is_tty`
+- `detect_color_level`
+- `color_level_at_least`
+- `color_level_to_int`
 
-let env = fn(name) {
-  case name {
-    "COLORTERM" -> Ok("truecolor")
-    "NO_COLOR" -> Ok("")
-    // every other variable is "unset"
-    _ -> Error(Nil)
-  }
-}
-
-resolve_color_level(is_tty: True, env: env)
-// -> TrueColor
-```
+`resolve_color_level` is available for advanced deterministic testing and
+custom integrations. Most applications should prefer `detect_color_level`.
 
 You can also gate behavior on the detected level without matching every
 variant:
