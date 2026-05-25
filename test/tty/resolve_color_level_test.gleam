@@ -25,10 +25,11 @@ pub fn no_color_disables_everything_test() {
   |> expect.to_equal(NoColor)
 }
 
-pub fn empty_no_color_is_treated_as_unset_test() {
-  // Per no-color.org, only NON-empty NO_COLOR disables.
+pub fn empty_no_color_falls_through_to_default_test() {
+  // Per no-color.org, only NON-empty NO_COLOR disables. With no other hints
+  // we fall to the default (rule 8) which is now NoColor.
   resolve_color_level(is_tty: True, env: env([#("NO_COLOR", "")]))
-  |> expect.to_equal(Basic)
+  |> expect.to_equal(NoColor)
 }
 
 pub fn force_color_zero_disables_test() {
@@ -155,7 +156,36 @@ pub fn ci_does_not_override_256_test() {
   |> expect.to_equal(Ansi256)
 }
 
-pub fn default_tty_is_basic_test() {
+pub fn default_tty_with_no_hints_is_no_color_test() {
+  // Rule 8: an unknown TTY without CI, TERM, or COLORTERM hints is treated
+  // as colorless. This matches chalk/supports-color and errs on the side of
+  // safety vs. emitting escapes a terminal might not handle.
   resolve_color_level(is_tty: True, env: env([]))
+  |> expect.to_equal(NoColor)
+}
+
+pub fn ci_distinguishes_from_default_test() {
+  // Rule 7 (CI -> Basic) must produce a DIFFERENT outcome from rule 8
+  // (default -> NoColor), otherwise the CI check is a no-op.
+  let with_ci = resolve_color_level(is_tty: True, env: env([#("CI", "true")]))
+  let without_ci = resolve_color_level(is_tty: True, env: env([]))
+  expect.to_equal(with_ci, Basic)
+  expect.to_equal(without_ci, NoColor)
+}
+
+pub fn force_color_false_disables_test() {
+  resolve_color_level(is_tty: True, env: env([#("FORCE_COLOR", "false")]))
+  |> expect.to_equal(NoColor)
+}
+
+pub fn force_color_true_enables_basic_test() {
+  resolve_color_level(is_tty: False, env: env([#("FORCE_COLOR", "true")]))
+  |> expect.to_equal(Basic)
+}
+
+pub fn force_color_is_case_insensitive_test() {
+  resolve_color_level(is_tty: True, env: env([#("FORCE_COLOR", "FALSE")]))
+  |> expect.to_equal(NoColor)
+  resolve_color_level(is_tty: False, env: env([#("FORCE_COLOR", "True")]))
   |> expect.to_equal(Basic)
 }

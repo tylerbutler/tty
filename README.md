@@ -36,14 +36,20 @@ pub fn main() {
 
 `detect_color_level(stream)` evaluates in order (first match wins):
 
-1. `NO_COLOR` set non-empty → `NoColor`
-2. `FORCE_COLOR` set → `0`=`NoColor`, `1`/empty/unknown=`Basic`, `2`=`Ansi256`, `3`=`TrueColor`
+1. `NO_COLOR` set to any non-empty value → `NoColor`
+2. `FORCE_COLOR` set (overrides the TTY check) →
+   `0`/`false`=`NoColor`, `2`=`Ansi256`, `3`=`TrueColor`,
+   `""`/`1`/`true`/unknown=`Basic` (case-insensitive)
 3. Stream is not a TTY → `NoColor`
 4. `TERM=dumb` → `NoColor`
 5. `COLORTERM` is `truecolor` or `24bit` (case-insensitive) → `TrueColor`
 6. `TERM` contains `256` → `Ansi256`
 7. `CI` set → `Basic`
-8. Default for TTYs → `Basic`
+8. Default (unknown TTY with no color hints) → `NoColor`
+
+The default in rule 8 errs on the side of safety: emitting ANSI escapes to
+a terminal that may not handle them is worse than rendering plain text.
+Set `FORCE_COLOR=1` (or any other supported value) to opt in explicitly.
 
 Honors the [`NO_COLOR`](https://no-color.org) standard and uses a precedence model inspired by [`chalk/supports-color`](https://github.com/chalk/supports-color).
 
@@ -51,22 +57,36 @@ Honors the [`NO_COLOR`](https://no-color.org) standard and uses a precedence mod
 
 `resolve_color_level` is exposed as a pure function so you can table-test
 your own rendering code without manipulating real environment variables
-or terminals. Its `env` callback uses `Ok(value)` for a set variable,
-including `Ok("")` for a set-but-empty variable, and `Error(Nil)` for an
-unset variable:
+or terminals. The `env` callback uses `Ok(value)` for a set variable
+(including `Ok("")` for a set-but-empty variable) and `Error(Nil)` for
+an unset variable:
 
 ```gleam
-import tty.{Basic, resolve_color_level}
+import tty.{Ansi256, NoColor, resolve_color_level}
 
 let env = fn(name) {
   case name {
-    "TERM" -> Ok("xterm")
+    "COLORTERM" -> Ok("truecolor")
+    "NO_COLOR" -> Ok("")
+    // every other variable is "unset"
     _ -> Error(Nil)
   }
 }
 
 resolve_color_level(is_tty: True, env: env)
-// -> Basic
+// -> TrueColor
+```
+
+You can also gate behavior on the detected level without matching every
+variant:
+
+```gleam
+import tty.{Ansi256, Stdout, color_level_at_least, detect_color_level}
+
+case color_level_at_least(detect_color_level(Stdout), Ansi256) {
+  True -> render_256_color()
+  False -> render_basic()
+}
 ```
 
 ## Requirements

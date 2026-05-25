@@ -12,8 +12,11 @@ import gleam/string
 
 /// The standard I/O streams of the running process.
 pub type Stream {
+  /// Standard input.
   Stdin
+  /// Standard output.
   Stdout
+  /// Standard error.
   Stderr
 }
 
@@ -27,6 +30,30 @@ pub type ColorLevel {
   Ansi256
   /// 24-bit truecolor (RGB) is supported.
   TrueColor
+}
+
+/// Returns `True` if the actual color level is at least as capable as the
+/// required level. Use this to gate features without matching every variant:
+///
+/// ```gleam
+/// case tty.color_level_at_least(tty.detect_color_level(Stdout), Ansi256) {
+///   True -> render_256_color()
+///   False -> render_basic()
+/// }
+/// ```
+pub fn color_level_at_least(actual: ColorLevel, required: ColorLevel) -> Bool {
+  color_level_to_int(actual) >= color_level_to_int(required)
+}
+
+/// Maps a `ColorLevel` to an integer rank (`NoColor`=0, `Basic`=1,
+/// `Ansi256`=2, `TrueColor`=3). Useful for comparisons and serialization.
+pub fn color_level_to_int(level: ColorLevel) -> Int {
+  case level {
+    NoColor -> 0
+    Basic -> 1
+    Ansi256 -> 2
+    TrueColor -> 3
+  }
 }
 
 /// Returns `True` if the given stream is connected to a terminal.
@@ -60,18 +87,25 @@ pub fn detect_color_level(stream: Stream) -> ColorLevel {
 /// including `Ok("")` for a set-but-empty variable. Return `Error(Nil)` when
 /// the variable is unset.
 ///
-/// Rules (first match wins):
-///   1. `NO_COLOR` non-empty -> `NoColor`
-///   2. `FORCE_COLOR` set -> `"0"` maps to `NoColor`, `"2"` to `Ansi256`,
-///      `"3"` to `TrueColor`, and `""`, `"1"`, or any unknown value to
-///      `Basic`
+/// Rules (first match wins; later rules apply only when no earlier rule
+/// matched):
+///   1. `NO_COLOR` set to any non-empty value -> `NoColor`
+///   2. `FORCE_COLOR` set (overrides the TTY check below):
+///        - `"0"` or `"false"` (case-insensitive) -> `NoColor`
+///        - `"2"` -> `Ansi256`
+///        - `"3"` -> `TrueColor`
+///        - `""`, `"1"`, `"true"`, or any other value -> `Basic`
 ///   3. `is_tty` is `False` -> `NoColor`
 ///   4. `TERM=dumb` -> `NoColor`
 ///   5. `COLORTERM=truecolor` or `COLORTERM=24bit` (case-insensitive)
 ///      -> `TrueColor`
 ///   6. `TERM` contains `"256"` -> `Ansi256`
 ///   7. `CI` set -> `Basic`
-///   8. otherwise -> `Basic`
+///   8. otherwise -> `NoColor`
+///
+/// The default in rule 8 errs on the side of safety: an unknown TTY with
+/// no color hints is treated as colorless, matching the behavior of
+/// `chalk/supports-color`.
 pub fn resolve_color_level(
   is_tty is_tty: Bool,
   env env: fn(String) -> Result(String, Nil),
@@ -88,17 +122,21 @@ fn resolve_forced_or_tty(
   env: fn(String) -> Result(String, Nil),
 ) -> ColorLevel {
   case env("FORCE_COLOR") {
-    Ok("0") -> NoColor
-    Ok("") -> Basic
-    Ok("1") -> Basic
-    Ok("2") -> Ansi256
-    Ok("3") -> TrueColor
-    Ok(_) -> Basic
+    Ok(value) -> force_color_level(value)
     Error(_) ->
       case is_tty {
         False -> NoColor
         True -> resolve_tty_color(env)
       }
+  }
+}
+
+fn force_color_level(value: String) -> ColorLevel {
+  case string.lowercase(value) {
+    "0" | "false" -> NoColor
+    "2" -> Ansi256
+    "3" -> TrueColor
+    _ -> Basic
   }
 }
 
@@ -137,7 +175,7 @@ fn resolve_by_term_or_ci(
 fn resolve_ci(env: fn(String) -> Result(String, Nil)) -> ColorLevel {
   case env("CI") {
     Ok(_) -> Basic
-    _ -> Basic
+    Error(_) -> NoColor
   }
 }
 

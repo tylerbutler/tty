@@ -1,5 +1,5 @@
 name = "tty"
-version = "0.1.0"
+version = "1.0.0"
 description = "TTY and ANSI color-support detection for Gleam (Erlang + JavaScript)"
 licences = ["MIT", "Apache-2.0"]
 repository = { type = "github", user = "tylerbutler", repo = "tty" }
