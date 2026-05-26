@@ -21,6 +21,15 @@ pub type Stream {
 }
 
 /// Level of ANSI color support detected for a stream.
+///
+/// ```gleam
+/// case tty.detect_color_level(Stdout) {
+///   NoColor -> render_plain_text()
+///   Basic -> render_basic_ansi()
+///   Ansi256 -> render_256_color()
+///   TrueColor -> render_rgb_color()
+/// }
+/// ```
 pub type ColorLevel {
   /// No ANSI escape codes should be emitted.
   NoColor
@@ -63,6 +72,13 @@ pub fn color_level_to_int(level: ColorLevel) -> Int {
 /// On the JavaScript target this uses `process.stdin.isTTY`,
 /// `process.stdout.isTTY`, or `process.stderr.isTTY`, so it requires a
 /// Node-style runtime with those streams.
+///
+/// ```gleam
+/// case tty.is_tty(Stdout) {
+///   True -> show_spinner()
+///   False -> print_plain_progress()
+/// }
+/// ```
 pub fn is_tty(stream: Stream) -> Bool {
   case stream {
     Stdin -> stdin_is_tty()
@@ -76,6 +92,15 @@ pub fn is_tty(stream: Stream) -> Bool {
 ///
 /// On the JavaScript target this reads `process.env`, so it requires a
 /// Node-style runtime.
+///
+/// ```gleam
+/// case tty.detect_color_level(Stdout) {
+///   NoColor -> render_without_ansi()
+///   Basic -> render_with_basic_ansi()
+///   Ansi256 -> render_with_256_colors()
+///   TrueColor -> render_with_truecolor()
+/// }
+/// ```
 pub fn detect_color_level(stream: Stream) -> ColorLevel {
   resolve_color_level(is_tty: is_tty(stream), env: get_env)
 }
@@ -109,6 +134,18 @@ pub fn detect_color_level(stream: Stream) -> ColorLevel {
 /// The default in rule 8 errs on the side of safety: an unknown TTY with
 /// no color hints is treated as colorless, matching the behavior of
 /// `chalk/supports-color`.
+///
+/// ```gleam
+/// let env = fn(name) {
+///   case name {
+///     "FORCE_COLOR" -> Ok("3")
+///     _ -> Error(Nil)
+///   }
+/// }
+///
+/// tty.resolve_color_level(is_tty: False, env: env)
+/// // -> TrueColor
+/// ```
 pub fn resolve_color_level(
   is_tty is_tty: Bool,
   env env: fn(String) -> Result(String, Nil),
