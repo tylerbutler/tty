@@ -16,3 +16,6 @@ jobs:
       create-release: true
       wait-for-publish: true
       publish-workflow-name: Publish
+    secrets:
+      app-id: ${{ secrets.RELEASE_APP_ID }}
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
