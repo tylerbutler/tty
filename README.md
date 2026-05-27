@@ -53,17 +53,25 @@ Set `FORCE_COLOR=1` (or any other supported value) to opt in explicitly.
 
 Honors the [`NO_COLOR`](https://no-color.org) standard and uses a precedence model inspired by [`chalk/supports-color`](https://github.com/chalk/supports-color).
 
+Notes:
+
+- `TERM=dumb` is matched exactly (`dumb`).
+- `TERM` containing `256` yields `Ansi256`.
+- `CI` is treated as enabled if the variable is set to any value.
+
 ## Public API guidance
 
-For 1.0, treat these as the primary stable APIs:
+For 1.x, this module intentionally exposes a small stable surface:
 
 - `is_tty`
 - `detect_color_level`
 - `color_level_at_least`
 - `color_level_to_int`
+- `Stream`
+- `ColorLevel`
 
-`resolve_color_level` is available for advanced deterministic testing and
-custom integrations. Most applications should prefer `detect_color_level`.
+`ColorLevel` is intentionally closed for 1.x (`NoColor`, `Basic`, `Ansi256`,
+`TrueColor`) to keep matching behavior predictable.
 
 You can also gate behavior on the detected level without matching every
 variant:
@@ -77,12 +85,34 @@ case color_level_at_least(detect_color_level(Stdout), Ansi256) {
 }
 ```
 
+## Runtime compatibility and fallback behavior
+
+Supported runtimes:
+
+- **Erlang target:** OTP ≥ 26
+- **JavaScript target:** Node ≥ 20 (or compatible runtime with `process.*`)
+
+In JavaScript runtimes without `process`/`process.env` (for example, browser
+or Worker contexts), this library degrades safely:
+
+- `is_tty(_)` returns `False`
+- env vars are treated as unset
+- `detect_color_level(_)` resolves to `NoColor`
+
 ## Requirements
 
 - Gleam ≥ 1.11
-- **Erlang target:** OTP ≥ 26 (uses per-stream `io:getopts/1`)
-- **JavaScript target:** Node ≥ 20, or a Node-style runtime that provides
-  `process.stdin`, `process.stdout`, `process.stderr`, and `process.env`
+- Erlang/OTP and Node versions tested in CI:
+  - OTP: 26.2, 27.2
+  - Node: 20, 22
+
+## Troubleshooting
+
+- **Getting `NoColor` unexpectedly:** check `NO_COLOR`, whether the stream is
+  a TTY, and whether `TERM` is set to `dumb`.
+- **Need color in CI/non-TTY contexts:** set `FORCE_COLOR=1`, `2`, or `3`.
+- **Expected CI color but got none:** ensure `CI` is actually set in your
+  environment.
 
 For contributor setup, testing, and release workflow details, see [DEV.md](DEV.md).
 

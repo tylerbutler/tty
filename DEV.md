@@ -20,10 +20,14 @@
 1. Add a changelog fragment under `.changes/unreleased/` using the project’s Changie setup.
 2. Keep `gleam.toml` at the last released version until the release PR merges; the release PR is what bumps the package to `1.0.0`.
 3. Run `just ci` before opening a pull request.
-4. Merge the release PR to `main` and let the release workflow publish the package.
+4. Ensure repository secret `HEX_API_KEY` is configured for publish automation.
+5. Merge the release PR to `main`.
+6. When the release PR closes, the auto-tag workflow creates a tag and GitHub release.
+7. The `Publish` workflow runs on tag push and publishes the package to Hex.
 
 ## Public API expectations
 
-- Keep the documented functions in `src/tty.gleam` stable across minor releases.
+- Keep the documented public API in `src/tty.gleam` stable across minor releases.
+- `ColorLevel` is a closed 1.x API contract (`NoColor`, `Basic`, `Ansi256`, `TrueColor`).
 - Prefer additive changes over breaking changes for 1.x.
 - If a behavior change is necessary, document it in the changelog and update the README examples when needed.

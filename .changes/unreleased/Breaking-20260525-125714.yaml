@@ -1,3 +1,6 @@
 kind: Breaking
-body: Stabilize the public API for the first 1.0 release.
+body: |
+  Remove `tty.resolve_color_level` from the public API and keep the stable 1.x
+  surface focused on `is_tty`, `detect_color_level`, `color_level_at_least`,
+  `color_level_to_int`, `Stream`, and `ColorLevel`.
 time: 2026-05-25T12:57:14.055273-07:00

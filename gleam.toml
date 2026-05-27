@@ -7,11 +7,11 @@ links = [{ title = "NO_COLOR spec", href = "https://no-color.org" }]
 gleam = ">= 1.11.0"
 
 internal_modules = [
+  "tty/resolve_color_level",
   "tty_test",
   "tty/color_level_helpers_test",
   "tty/env_probe",
   "tty/resolve_color_level_test",
-  "tty/resolve_color_test",
   "tty/smoke_test",
 ]
 

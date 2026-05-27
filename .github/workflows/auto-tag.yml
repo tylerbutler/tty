@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   auto-tag:
-    uses: tylerbutler/actions/.github/workflows/auto-tag.yml@77f80621309fc7443b628802e08a815d41dd4b47
+    uses: tylerbutler/actions/.github/workflows/auto-tag.yml@17116c2d3dfb57c2db7967fcecf0fc878e4cb6cf
     with:
       create-release: true
+      wait-for-publish: true
+      publish-workflow-name: Publish

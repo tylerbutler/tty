@@ -1,0 +1,5 @@
+kind: Security
+body: |
+  Pin GitHub Actions to immutable SHAs and add an automated Hex publish
+  workflow using tylerbutler/actions.
+time: 2026-05-26T17:17:00.000000-07:00

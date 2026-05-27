@@ -8,7 +8,7 @@
 import gleam/dynamic.{type Dynamic}
 @target(javascript)
 import gleam/dynamic/decode
-import gleam/string
+import tty/resolve_color_level as resolver
 
 /// The standard I/O streams of the running process.
 pub type Stream {
@@ -21,6 +21,7 @@ pub type Stream {
 }
 
 /// Level of ANSI color support detected for a stream.
+/// This variant set is intentionally stable for 1.x.
 ///
 /// ```gleam
 /// case tty.detect_color_level(Stdout) {
@@ -93,6 +94,10 @@ pub fn is_tty(stream: Stream) -> Bool {
 /// On the JavaScript target this reads `process.env`, so it requires a
 /// Node-style runtime.
 ///
+/// When a JavaScript runtime does not provide `process` or `process.env`,
+/// environment variables are treated as unset and this function falls back to
+/// `NoColor` unless other forced inputs are available.
+///
 /// ```gleam
 /// case tty.detect_color_level(Stdout) {
 ///   NoColor -> render_without_ansi()
@@ -102,119 +107,16 @@ pub fn is_tty(stream: Stream) -> Bool {
 /// }
 /// ```
 pub fn detect_color_level(stream: Stream) -> ColorLevel {
-  resolve_color_level(is_tty: is_tty(stream), env: get_env)
+  resolver.resolve_color_level(is_tty: is_tty(stream), env: get_env)
+  |> color_level_from_int
 }
 
-/// Advanced color-resolution hook. Prefer `detect_color_level` for normal
-/// application code.
-///
-/// This API exists primarily for deterministic tests and custom integrations.
-/// The stable entrypoint for most users is `detect_color_level`.
-///
-/// The `env` callback returns `Ok(value)` for a set environment variable,
-/// including `Ok("")` for a set-but-empty variable. Return `Error(Nil)` when
-/// the variable is unset.
-///
-/// Rules (first match wins; later rules apply only when no earlier rule
-/// matched):
-///   1. `NO_COLOR` set to any non-empty value -> `NoColor`
-///   2. `FORCE_COLOR` set (overrides the TTY check below):
-///        - `"0"` or `"false"` (case-insensitive) -> `NoColor`
-///        - `"2"` -> `Ansi256`
-///        - `"3"` -> `TrueColor`
-///        - `""`, `"1"`, `"true"`, or any other value -> `Basic`
-///   3. `is_tty` is `False` -> `NoColor`
-///   4. `TERM=dumb` -> `NoColor`
-///   5. `COLORTERM=truecolor` or `COLORTERM=24bit` (case-insensitive)
-///      -> `TrueColor`
-///   6. `TERM` contains `"256"` -> `Ansi256`
-///   7. `CI` set -> `Basic`
-///   8. otherwise -> `NoColor`
-///
-/// The default in rule 8 errs on the side of safety: an unknown TTY with
-/// no color hints is treated as colorless, matching the behavior of
-/// `chalk/supports-color`.
-///
-/// ```gleam
-/// let env = fn(name) {
-///   case name {
-///     "FORCE_COLOR" -> Ok("3")
-///     _ -> Error(Nil)
-///   }
-/// }
-///
-/// tty.resolve_color_level(is_tty: False, env: env)
-/// // -> TrueColor
-/// ```
-pub fn resolve_color_level(
-  is_tty is_tty: Bool,
-  env env: fn(String) -> Result(String, Nil),
-) -> ColorLevel {
-  case env("NO_COLOR") {
-    Ok(value) if value != "" -> NoColor
-    _ -> resolve_forced_or_tty(is_tty, env)
-  }
-}
-
-fn resolve_forced_or_tty(
-  is_tty: Bool,
-  env: fn(String) -> Result(String, Nil),
-) -> ColorLevel {
-  case env("FORCE_COLOR") {
-    Ok(value) -> force_color_level(value)
-    Error(_) ->
-      case is_tty {
-        True -> resolve_tty_color(env)
-        False -> NoColor
-      }
-  }
-}
-
-fn force_color_level(value: String) -> ColorLevel {
-  case string.lowercase(value) {
-    "0" | "false" -> NoColor
-    "2" -> Ansi256
-    "3" -> TrueColor
-    _ -> Basic
-  }
-}
-
-fn resolve_tty_color(env: fn(String) -> Result(String, Nil)) -> ColorLevel {
-  let term = env("TERM")
-
-  case term {
-    Ok("dumb") -> NoColor
-    _ ->
-      case env("COLORTERM") {
-        Ok(colorterm) ->
-          case string.lowercase(colorterm) {
-            "truecolor" -> TrueColor
-            "24bit" -> TrueColor
-            _ -> resolve_by_term_or_ci(term, env)
-          }
-        Error(_) -> resolve_by_term_or_ci(term, env)
-      }
-  }
-}
-
-fn resolve_by_term_or_ci(
-  term: Result(String, Nil),
-  env: fn(String) -> Result(String, Nil),
-) -> ColorLevel {
-  case term {
-    Ok(term) ->
-      case string.contains(term, "256") {
-        True -> Ansi256
-        False -> resolve_ci(env)
-      }
-    Error(_) -> resolve_ci(env)
-  }
-}
-
-fn resolve_ci(env: fn(String) -> Result(String, Nil)) -> ColorLevel {
-  case env("CI") {
-    Ok(_) -> Basic
-    Error(_) -> NoColor
+fn color_level_from_int(value: Int) -> ColorLevel {
+  case value {
+    0 -> NoColor
+    1 -> Basic
+    2 -> Ansi256
+    _ -> TrueColor
   }
 }
 
