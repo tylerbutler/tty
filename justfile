@@ -6,39 +6,82 @@ alias t := test
 alias f := format
 alias l := lint
 alias c := clean
+alias cl := change
 
 # Default recipe
 default:
     @just --list
 
-# === STANDARD RECIPES ===
+# === DEPENDENCIES ===
+
+# Download project dependencies
+deps:
+    gleam deps download
+
+# === BUILD ===
 
 # Compile the project
 build:
     gleam build
 
-# Run tests
+# Build with warnings as errors (both targets)
+build-strict:
+    gleam build --target erlang --warnings-as-errors
+    gleam build --target javascript --warnings-as-errors
+
+# === TESTING ===
+
+# Run tests on both targets
 test:
     gleam test --target erlang
     gleam test --target javascript
+
+# === CODE QUALITY ===
 
 # Format code
 format:
     gleam format src test
 
-# Run linter
-lint:
+# Check formatting without changes
+format-check:
     gleam format --check src test
+
+# Type check without building
+check:
+    gleam check
+
+# Run linter (alias for format-check)
+lint: format-check
+
+# === DOCUMENTATION ===
+
+# Build API documentation
+docs:
+    gleam docs build
+
+# === CHANGELOG ===
+
+# Create a new changelog entry
+change:
+    changie new
+
+# Preview unreleased changelog
+changelog-preview:
+    changie batch auto --dry-run
+
+# Generate CHANGELOG.md
+changelog:
+    changie merge
+
+# === MAINTENANCE ===
 
 # Remove build artifacts
 clean:
     rm -rf build
 
-# Full validation workflow
-ci: format lint test build docs
+# === CI ===
 
-# Build API documentation
-docs:
-    gleam docs build
+# Full validation workflow (no file mutation)
+ci: format-check check build-strict test docs
 
 alias pr := ci

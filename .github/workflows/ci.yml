@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test (OTP ${{ matrix.otp }}, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ["26.2", "27.2"]
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+        with:
+          otp-version: ${{ matrix.otp }}
+          gleam-version: "1.16.0"
+          node: "true"
+          node-version: ${{ matrix.node }}
+
+      - name: Check formatting
+        run: just format-check
+
+      - name: Type check
+        run: just check
+
+      - name: Build (warnings as errors)
+        run: just build-strict
+
+      - name: Run tests
+        run: just test
+
+  docs:
+    runs-on: ubuntu-latest
+    name: Docs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Build documentation
+        run: just docs
