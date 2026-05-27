@@ -6,16 +6,14 @@ reset() ->
     nil.
 
 record(Name) ->
-    Seen = case get(tty_env_probe_seen) of
-        undefined -> [];
-        Values -> Values
-    end,
-    put(tty_env_probe_seen, [Name | Seen]),
+    put(tty_env_probe_seen, [Name | seen_names()]),
     nil.
 
 seen(Name) ->
-    Seen = case get(tty_env_probe_seen) of
+    lists:member(Name, seen_names()).
+
+seen_names() ->
+    case get(tty_env_probe_seen) of
         undefined -> [];
         Values -> Values
-    end,
-    lists:member(Name, Seen).
+    end.

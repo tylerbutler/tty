@@ -25,7 +25,18 @@ tty_option_enabled(Dev, Key) ->
 
 %% Returns {ok, Value} | {error, nil} to match Gleam's Result(String, Nil).
 get_env(Name) when is_binary(Name) ->
-    case os:getenv(unicode:characters_to_list(Name)) of
-        false -> {error, nil};
-        Value -> {ok, unicode:characters_to_binary(Value)}
+    case unicode:characters_to_list(Name) of
+        EnvName when is_list(EnvName) ->
+            case os:getenv(EnvName) of
+                false -> {error, nil};
+                Value -> env_value_to_result(Value)
+            end;
+        {error, _, _} ->
+            {error, nil}
+    end.
+
+env_value_to_result(Value) ->
+    case unicode:characters_to_binary(Value) of
+        EnvValue when is_binary(EnvValue) -> {ok, EnvValue};
+        {error, _, _} -> {error, nil}
     end.
