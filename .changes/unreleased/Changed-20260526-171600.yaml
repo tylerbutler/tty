@@ -1,5 +1,8 @@
 kind: Changed
 body: |
-  Clarify 1.x API guarantees, runtime fallback behavior, CI-tested platform
-  matrix, and troubleshooting guidance in README/DEV documentation.
+  Document 1.x API guarantees, runtime compatibility, and troubleshooting.
+
+  The README now clarifies the stable public surface, color-resolution rules,
+  supported OTP/Node versions, and JavaScript fallback behavior when
+  `process`/`process.env` are unavailable.
 time: 2026-05-26T17:16:00.000000-07:00

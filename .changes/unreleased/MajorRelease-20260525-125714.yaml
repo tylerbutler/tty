@@ -1,0 +1,8 @@
+kind: MajorRelease
+body: |
+  Remove `tty.resolve_color_level` from the public API.
+
+  The 1.0 public surface is intentionally focused on `is_tty`,
+  `detect_color_level`, `color_level_at_least`, `color_level_to_int`, `Stream`,
+  and `ColorLevel`.
+time: 2026-05-25T12:57:14.055273-07:00
