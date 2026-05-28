@@ -8,7 +8,8 @@
 import gleam/dynamic.{type Dynamic}
 @target(javascript)
 import gleam/dynamic/decode
-import gleam/result
+import gleam/int
+import gleam/order
 import tty/resolve_color_level as resolver
 
 /// The standard I/O streams of the running process.
@@ -57,12 +58,28 @@ pub fn color_level_at_least(
   actual actual: ColorLevel,
   at_least required: ColorLevel,
 ) -> Bool {
-  color_level_to_int(actual) >= color_level_to_int(required)
+  case color_level_compare(actual, required) {
+    order.Lt -> False
+    order.Eq | order.Gt -> True
+  }
 }
 
-/// Maps a `ColorLevel` to a stable integer rank (`NoColor`=0, `Basic`=1,
-/// `Ansi256`=2, `TrueColor`=3). This mapping is part of the public API.
-pub fn color_level_to_int(level: ColorLevel) -> Int {
+/// Orders two color levels by capability, where
+/// `NoColor` < `Basic` < `Ansi256` < `TrueColor`. Returns a `gleam/order`
+/// `Order`, so it composes with `list.sort`, `order.reverse`, and friends.
+///
+/// ```gleam
+/// tty.color_level_compare(Basic, Ansi256)
+/// // -> order.Lt
+/// ```
+pub fn color_level_compare(a: ColorLevel, b: ColorLevel) -> order.Order {
+  int.compare(color_level_rank(a), color_level_rank(b))
+}
+
+/// Internal capability rank for a `ColorLevel` (`NoColor`=0 .. `TrueColor`=3).
+/// The numeric values are an implementation detail, not part of the public
+/// 1.x API — callers should use `color_level_compare`/`color_level_at_least`.
+fn color_level_rank(level: ColorLevel) -> Int {
   case level {
     NoColor -> 0
     Basic -> 1
@@ -71,18 +88,10 @@ pub fn color_level_to_int(level: ColorLevel) -> Int {
   }
 }
 
-/// Inverse of `color_level_to_int`: maps a rank back to a `ColorLevel`.
-/// Returns `Error(Nil)` for any value outside `0..3`. Useful for round-tripping
-/// a detected level through serialization or external storage.
-///
-/// ```gleam
-/// tty.color_level_from_int(2)
-/// // -> Ok(Ansi256)
-///
-/// tty.color_level_from_int(99)
-/// // -> Error(Nil)
-/// ```
-pub fn color_level_from_int(rank: Int) -> Result(ColorLevel, Nil) {
+/// Inverse of `color_level_rank`: maps a `0..3` rank back to a `ColorLevel`,
+/// returning `Error(Nil)` for any out-of-range value. Used to convert the
+/// internal resolver's rank into a `ColorLevel`.
+fn color_level_from_rank(rank: Int) -> Result(ColorLevel, Nil) {
   case rank {
     0 -> Ok(NoColor)
     1 -> Ok(Basic)
@@ -133,9 +142,13 @@ pub fn is_tty(stream: Stream) -> Bool {
 /// }
 /// ```
 pub fn detect_color_level(stream: Stream) -> ColorLevel {
-  resolver.resolve_color_level(is_tty: is_tty(stream), env: get_env)
-  |> color_level_from_int
-  |> result.unwrap(NoColor)
+  let rank = resolver.resolve_color_level(is_tty: is_tty(stream), env: get_env)
+  // The resolver is statically guaranteed to return a rank in 0..3, so this
+  // can only fail if that internal invariant is ever broken. Crashing loudly
+  // is preferable to silently degrading color detection to NoColor.
+  let assert Ok(level) = color_level_from_rank(rank)
+    as "resolve_color_level must return a rank in 0..3"
+  level
 }
 
 @external(erlang, "tty_ffi", "stdin_is_tty")

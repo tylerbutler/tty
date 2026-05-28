@@ -66,12 +66,14 @@ For 1.x, this module intentionally exposes a small stable surface:
 - `is_tty`
 - `detect_color_level`
 - `color_level_at_least`
-- `color_level_to_int`
+- `color_level_compare`
 - `Stream`
 - `ColorLevel`
 
 `ColorLevel` is intentionally closed for 1.x (`NoColor`, `Basic`, `Ansi256`,
-`TrueColor`) to keep matching behavior predictable.
+`TrueColor`) to keep matching behavior predictable. Compare levels with
+`color_level_at_least` or `color_level_compare` rather than relying on any
+numeric rank; the integer mapping is an internal implementation detail.
 
 You can also gate behavior on the detected level without matching every
 variant:

@@ -8,9 +8,10 @@ body: |
 
   Public API: `Stream`, `ColorLevel` (`NoColor`, `Basic`, `Ansi256`,
   `TrueColor`), `is_tty/1`, `detect_color_level/1`,
-  `color_level_at_least/2` (labels: `actual:`, `at_least:`),
-  `color_level_to_int/1`, and `color_level_from_int/1` for round-tripping a
-  rank back to a `ColorLevel`.
+  `color_level_at_least/2` (labels: `actual:`, `at_least:`), and
+  `color_level_compare/2`, which returns a `gleam/order` `Order`. Levels are
+  compared via these helpers; the numeric rank is an internal implementation
+  detail and is not part of the public API.
 
   Color resolution follows the documented precedence rules in `README.md`;
   the JavaScript runtime degrades safely when `process`/`process.env` are

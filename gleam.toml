@@ -10,8 +10,11 @@ internal_modules = [
   "tty/resolve_color_level",
   "tty_test",
   "tty/color_level_helpers_test",
+  "tty/env_mutate",
   "tty/env_probe",
   "tty/ffi_contract_test",
+  "tty/ffi_env_test",
+  "tty/noprocess_test",
   "tty/resolve_color_level_test",
   "tty/smoke_test",
 ]
