@@ -1,0 +1,9 @@
+kind: Changed
+body: |
+  Label `color_level_at_least/2` arguments as `actual:` and `at_least:`.
+
+  Call sites that previously used positional arguments continue to compile
+  unchanged. The labels make the intent unambiguous at call sites and bring
+  the helper into line with the labeled style already used inside the
+  internal resolver.
+time: 2026-05-27T19:34:19.000000-07:00

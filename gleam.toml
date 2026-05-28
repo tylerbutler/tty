@@ -20,7 +20,7 @@ internal_modules = [
 typescript_declarations = true
 
 [dependencies]
-gleam_stdlib = ">= 0.40.0"
+gleam_stdlib = ">= 0.40.0 and < 2.0.0"
 
 [dev-dependencies]
 startest = ">= 0.6.0 and < 1.0.0"

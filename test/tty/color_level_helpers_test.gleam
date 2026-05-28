@@ -1,3 +1,4 @@
+import gleam/list
 import startest/expect
 import tty.{Ansi256, Basic, NoColor, TrueColor}
 
@@ -34,4 +35,25 @@ pub fn to_int_orders_levels_test() {
   tty.color_level_to_int(Basic) |> expect.to_equal(1)
   tty.color_level_to_int(Ansi256) |> expect.to_equal(2)
   tty.color_level_to_int(TrueColor) |> expect.to_equal(3)
+}
+
+pub fn from_int_round_trips_valid_ranks_test() {
+  tty.color_level_from_int(0) |> expect.to_equal(Ok(NoColor))
+  tty.color_level_from_int(1) |> expect.to_equal(Ok(Basic))
+  tty.color_level_from_int(2) |> expect.to_equal(Ok(Ansi256))
+  tty.color_level_from_int(3) |> expect.to_equal(Ok(TrueColor))
+}
+
+pub fn from_int_rejects_out_of_range_test() {
+  tty.color_level_from_int(-1) |> expect.to_equal(Error(Nil))
+  tty.color_level_from_int(4) |> expect.to_equal(Error(Nil))
+  tty.color_level_from_int(99) |> expect.to_equal(Error(Nil))
+}
+
+pub fn to_int_then_from_int_is_identity_test() {
+  let levels = [NoColor, Basic, Ansi256, TrueColor]
+  list.each(levels, fn(level) {
+    tty.color_level_from_int(tty.color_level_to_int(level))
+    |> expect.to_equal(Ok(level))
+  })
 }

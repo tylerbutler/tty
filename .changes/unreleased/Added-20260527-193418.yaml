@@ -1,0 +1,8 @@
+kind: Added
+body: |
+  `color_level_from_int/1` for round-tripping a rank back to a `ColorLevel`.
+
+  Returns `Ok(ColorLevel)` for `0..3` and `Error(Nil)` otherwise, making it
+  the public inverse of `color_level_to_int/1`. Useful for serializing and
+  restoring a detected level across process boundaries.
+time: 2026-05-27T19:34:18.000000-07:00

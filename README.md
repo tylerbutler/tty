@@ -79,7 +79,8 @@ variant:
 ```gleam
 import tty.{Ansi256, Stdout, color_level_at_least, detect_color_level}
 
-case color_level_at_least(detect_color_level(Stdout), Ansi256) {
+let level = detect_color_level(Stdout)
+case color_level_at_least(actual: level, at_least: Ansi256) {
   True -> render_256_color()
   False -> render_basic()
 }

@@ -24,5 +24,5 @@ packages = [
 ]
 
 [requirements]
-gleam_stdlib = { version = ">= 0.40.0" }
+gleam_stdlib = { version = ">= 0.40.0 and < 2.0.0" }
 startest = { version = ">= 0.6.0 and < 1.0.0" }

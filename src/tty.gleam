@@ -8,6 +8,7 @@
 import gleam/dynamic.{type Dynamic}
 @target(javascript)
 import gleam/dynamic/decode
+import gleam/result
 import tty/resolve_color_level as resolver
 
 /// The standard I/O streams of the running process.
@@ -46,12 +47,16 @@ pub type ColorLevel {
 /// required level. Use this to gate features without matching every variant:
 ///
 /// ```gleam
-/// case tty.color_level_at_least(tty.detect_color_level(Stdout), Ansi256) {
+/// let level = tty.detect_color_level(Stdout)
+/// case tty.color_level_at_least(actual: level, at_least: Ansi256) {
 ///   True -> render_256_color()
 ///   False -> render_basic()
 /// }
 /// ```
-pub fn color_level_at_least(actual: ColorLevel, required: ColorLevel) -> Bool {
+pub fn color_level_at_least(
+  actual actual: ColorLevel,
+  at_least required: ColorLevel,
+) -> Bool {
   color_level_to_int(actual) >= color_level_to_int(required)
 }
 
@@ -63,6 +68,27 @@ pub fn color_level_to_int(level: ColorLevel) -> Int {
     Basic -> 1
     Ansi256 -> 2
     TrueColor -> 3
+  }
+}
+
+/// Inverse of `color_level_to_int`: maps a rank back to a `ColorLevel`.
+/// Returns `Error(Nil)` for any value outside `0..3`. Useful for round-tripping
+/// a detected level through serialization or external storage.
+///
+/// ```gleam
+/// tty.color_level_from_int(2)
+/// // -> Ok(Ansi256)
+///
+/// tty.color_level_from_int(99)
+/// // -> Error(Nil)
+/// ```
+pub fn color_level_from_int(rank: Int) -> Result(ColorLevel, Nil) {
+  case rank {
+    0 -> Ok(NoColor)
+    1 -> Ok(Basic)
+    2 -> Ok(Ansi256)
+    3 -> Ok(TrueColor)
+    _ -> Error(Nil)
   }
 }
 
@@ -109,15 +135,7 @@ pub fn is_tty(stream: Stream) -> Bool {
 pub fn detect_color_level(stream: Stream) -> ColorLevel {
   resolver.resolve_color_level(is_tty: is_tty(stream), env: get_env)
   |> color_level_from_int
-}
-
-fn color_level_from_int(value: Int) -> ColorLevel {
-  case value {
-    0 -> NoColor
-    1 -> Basic
-    2 -> Ansi256
-    _ -> TrueColor
-  }
+  |> result.unwrap(NoColor)
 }
 
 @external(erlang, "tty_ffi", "stdin_is_tty")
