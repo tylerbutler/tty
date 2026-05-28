@@ -26,7 +26,8 @@ fn resolve(
     0 -> NoColor
     1 -> Basic
     2 -> Ansi256
-    _ -> TrueColor
+    3 -> TrueColor
+    _ -> panic as "resolver returned a rank outside the documented 0..3 range"
   }
 }
 
@@ -93,6 +94,34 @@ pub fn colorterm_24bit_yields_truecolor_test() {
 pub fn colorterm_truecolor_is_case_insensitive_test() {
   resolve(is_tty: True, env: env([#("COLORTERM", "TrueColor")]))
   |> expect.to_equal(TrueColor)
+}
+
+pub fn colorterm_non_truecolor_falls_through_to_256_test() {
+  // A COLORTERM that is neither `truecolor` nor `24bit` must NOT imply
+  // truecolor; resolution falls through to the TERM/CI rules. Here TERM
+  // contains 256, so the result is Ansi256.
+  resolve(
+    is_tty: True,
+    env: env([#("COLORTERM", "8bit"), #("TERM", "xterm-256color")]),
+  )
+  |> expect.to_equal(Ansi256)
+}
+
+pub fn colorterm_non_truecolor_falls_through_to_ci_test() {
+  // COLORTERM is non-truecolor and TERM lacks 256, so resolution continues to
+  // the CI rule (Basic).
+  resolve(
+    is_tty: True,
+    env: env([#("COLORTERM", "8bit"), #("TERM", "xterm"), #("CI", "true")]),
+  )
+  |> expect.to_equal(Basic)
+}
+
+pub fn colorterm_non_truecolor_with_no_hints_is_no_color_test() {
+  // COLORTERM non-truecolor, TERM present but not 256, no CI: falls through to
+  // the safe default (NoColor).
+  resolve(is_tty: True, env: env([#("COLORTERM", "8bit"), #("TERM", "xterm")]))
+  |> expect.to_equal(NoColor)
 }
 
 pub fn term_with_256_yields_ansi256_test() {
