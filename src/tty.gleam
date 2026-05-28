@@ -13,6 +13,7 @@ import gleam/order
 import tty/resolve_color_level as resolver
 
 /// The standard I/O streams of the running process.
+/// This variant set is intentionally stable for 1.x.
 pub type Stream {
   /// Standard input.
   Stdin
