@@ -106,8 +106,8 @@ or Worker contexts), this library degrades safely:
 
 - Gleam ≥ 1.11
 - Erlang/OTP and Node versions tested in CI:
-  - OTP: 26.2, 27.2
-  - Node: 20, 22
+  - OTP (Erlang target): 26, 27, 28
+  - Node (JavaScript target): 20, 22, 24
 
 ## Troubleshooting
 
