@@ -1,8 +1,0 @@
-kind: Security
-body: |
-  Harden release automation for published artifacts.
-
-  GitHub Actions are now pinned to immutable SHAs, and Hex publishing runs
-  through the hardened workflow to reduce supply-chain risk and improve release
-  consistency for consumers.
-time: 2026-05-26T17:17:00.000000-07:00

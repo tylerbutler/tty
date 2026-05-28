@@ -1,8 +1,0 @@
-kind: Dependencies
-body: |
-  Pin an upper bound on `gleam_stdlib`.
-
-  The requirement is now `>= 0.40.0 and < 2.0.0` (previously `>= 0.40.0`
-  with no upper bound) so a future stdlib major release cannot silently
-  break consumers.
-time: 2026-05-27T19:34:20.000000-07:00
