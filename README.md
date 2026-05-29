@@ -32,6 +32,11 @@ pub fn main() {
 }
 ```
 
+These examples use `Stdout`, but CLIs that write data on stdout and
+diagnostics on stderr usually want to check `Stderr` instead — e.g.
+`tty.is_tty(Stderr)` to decide whether to color a progress bar or log
+output while stdout is being piped elsewhere.
+
 ## Color resolution rules
 
 `detect_color_level(stream)` evaluates in order (first match wins):
@@ -86,6 +91,17 @@ case color_level_at_least(actual: level, at_least: Ansi256) {
   True -> render_256_color()
   False -> render_basic()
 }
+```
+
+For finer-grained ordering, `color_level_compare` returns a `gleam/order`
+`Order`, so it composes with `list.sort`, `order.reverse`, and friends:
+
+```gleam
+import gleam/order
+import tty.{Ansi256, Basic, color_level_compare}
+
+color_level_compare(Basic, Ansi256)
+// -> order.Lt
 ```
 
 ## Runtime compatibility and fallback behavior
