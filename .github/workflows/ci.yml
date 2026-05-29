@@ -17,8 +17,8 @@ jobs:
       - name: Setup environment
         uses: ./.github/actions/setup
 
-      - name: Check formatting
-        run: just format-check
+      - name: Lint (formatting + glinter)
+        run: just lint
 
       - name: Type check
         run: just check

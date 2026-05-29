@@ -147,6 +147,7 @@ pub fn detect_color_level(stream: Stream) -> ColorLevel {
   // The resolver is statically guaranteed to return a rank in 0..3, so this
   // can only fail if that internal invariant is ever broken. Crashing loudly
   // is preferable to silently degrading color detection to NoColor.
+  // nolint: assert_ok_pattern -- internal 0..3 invariant guard; public fn returns ColorLevel by design (see comment above)
   let assert Ok(level) = color_level_from_rank(rank)
     as "resolve_color_level must return a rank in 0..3"
   level

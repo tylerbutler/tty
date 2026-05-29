@@ -27,6 +27,32 @@ gleam_stdlib = ">= 0.40.0 and < 2.0.0"
 
 [dev-dependencies]
 startest = ">= 0.6.0 and < 1.0.0"
+glinter = ">= 2.19.0 and < 3.0.0"
+
 [tools.licence_audit]
 allow = ["Apache-2.0", "MIT"]
 deny = []
+
+[tools.glinter]
+include = ["src/", "test/"]
+
+# Test files are exercised by startest, which discovers `*_test` functions by
+# reflection — so they're never imported (unused_exports) and conventionally
+# omit the `-> Nil` return annotation. The exhaustiveness guards in the smoke
+# tests intentionally use single-branch cases and a panic on the impossible
+# branch. None of these are actionable in test code.
+[tools.glinter.ignore]
+"test/**/*.gleam" = [
+  "unused_exports",
+  "missing_type_annotation",
+  "avoid_panic",
+  "redundant_case",
+  # Test helpers (e.g. env_mutate.set) take positional args by convention.
+  "label_possible",
+]
+# Env lookups return Result(String, Nil): an absent var (Error(Nil)) carries no
+# information to propagate — it is a normal fallback branch, not a failure.
+"src/tty/resolve_color_level.gleam" = ["thrown_away_error"]
+# color_level_compare(a, b) mirrors the stdlib int.compare / Order convention;
+# the frozen 1.x API uses positional a/b. (color_level_at_least already labels.)
+"src/tty.gleam" = ["label_possible"]

@@ -50,8 +50,9 @@ format-check:
 check:
     gleam check
 
-# Run linter (alias for format-check)
+# Run linter (format check + glinter)
 lint: format-check
+    gleam run -m glinter
 
 # === DOCUMENTATION ===
 
@@ -82,6 +83,6 @@ clean:
 # === CI ===
 
 # Full validation workflow (no file mutation)
-ci: format-check check build-strict test docs
+ci: lint check build-strict test docs
 
 alias pr := ci
