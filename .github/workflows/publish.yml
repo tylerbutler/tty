@@ -13,7 +13,7 @@ jobs:
   publish-hex:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # ratchet:actions/checkout@v6.0.3
 
       - name: Setup Gleam
         uses: tylerbutler/actions/setup-gleam@ee7def5950abcf0a519add705a95719ab345c05e # ratchet:tylerbutler/actions/setup-gleam@v1
