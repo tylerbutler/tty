@@ -1,5 +1,8 @@
 import startest/expect
-import tty.{Ansi256, Basic, NoColor, Stderr, Stdin, Stdout, TrueColor}
+import tty.{
+  Ansi256, Basic, Dark, Light, NoColor, Stderr, Stdin, Stdout, TrueColor,
+  Unknown,
+}
 
 // Smoke tests: assert FFI calls don't crash and return values of the
 // expected types. Exact booleans/levels depend on the runtime environment.
@@ -28,5 +31,11 @@ pub fn is_tty_stderr_returns_bool_test() {
 pub fn detect_color_level_returns_a_level_test() {
   case tty.detect_color_level(Stdout) {
     NoColor | Basic | Ansi256 | TrueColor -> expect.to_be_true(True)
+  }
+}
+
+pub fn detect_background_returns_a_background_test() {
+  case tty.detect_background(Stdout) {
+    Light | Dark | Unknown -> expect.to_be_true(True)
   }
 }
