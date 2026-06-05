@@ -10,6 +10,7 @@ import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/int
 import gleam/order
+import tty/resolve_background as background_resolver
 import tty/resolve_color_level as resolver
 
 /// The standard I/O streams of the running process.
@@ -43,6 +44,25 @@ pub type ColorLevel {
   Ansi256
   /// 24-bit truecolor (RGB) is supported.
   TrueColor
+}
+
+/// Detected terminal background.
+/// This variant set is intentionally stable for 1.x.
+///
+/// ```gleam
+/// case tty.detect_background(Stdout) {
+///   Light -> render_for_light_background()
+///   Dark -> render_for_dark_background()
+///   Unknown -> render_default_theme()
+/// }
+/// ```
+pub type Background {
+  /// Terminal has a light background.
+  Light
+  /// Terminal has a dark background.
+  Dark
+  /// Background could not be determined.
+  Unknown
 }
 
 /// Returns `True` if the actual color level is at least as capable as the
@@ -102,6 +122,18 @@ fn color_level_from_rank(rank: Int) -> Result(ColorLevel, Nil) {
   }
 }
 
+/// Inverse of the internal background rank: maps a `0..2` rank back to a
+/// `Background`, returning `Error(Nil)` for any out-of-range value. Used to
+/// convert the internal resolver's rank into a `Background`.
+fn background_from_rank(rank: Int) -> Result(Background, Nil) {
+  case rank {
+    0 -> Ok(Unknown)
+    1 -> Ok(Dark)
+    2 -> Ok(Light)
+    _ -> Error(Nil)
+  }
+}
+
 /// Returns `True` if the given stream is connected to a terminal.
 ///
 /// On the Erlang target this uses `io:getopts/1` (requires OTP 26+). If
@@ -151,6 +183,39 @@ pub fn detect_color_level(stream: Stream) -> ColorLevel {
   let assert Ok(level) = color_level_from_rank(rank)
     as "resolve_color_level must return a rank in 0..3"
   level
+}
+
+/// Detects whether the terminal background is light or dark from `COLORFGBG`.
+///
+/// The `stream` argument is accepted for API symmetry with `detect_color_level`
+/// and to leave room for future stream-specific detection; the current
+/// `COLORFGBG` signal is environment-wide and stream-independent.
+///
+/// On the JavaScript target this reads `process.env`, so it requires a
+/// Node-style runtime. When a JavaScript runtime does not provide `process` or
+/// `process.env`, environment variables are treated as unset and this function
+/// returns `Unknown`.
+///
+/// Returns `Unknown` when `COLORFGBG` is unset, malformed, or does not contain a
+/// clear background palette index.
+///
+/// ```gleam
+/// case tty.detect_background(Stdout) {
+///   Light -> render_dark_text()
+///   Dark -> render_light_text()
+///   Unknown -> render_default_theme()
+/// }
+/// ```
+pub fn detect_background(stream: Stream) -> Background {
+  let _ = stream
+  let rank = background_resolver.resolve_background(env: get_env)
+  // The resolver is statically guaranteed to return a rank in 0..2, so this
+  // can only fail if that internal invariant is ever broken. Crashing loudly
+  // is preferable to silently degrading background detection to Unknown.
+  // nolint: assert_ok_pattern -- internal 0..2 invariant guard; public fn returns Background by design (see comment above)
+  let assert Ok(background) = background_from_rank(rank)
+    as "resolve_background must return a rank in 0..2"
+  background
 }
 
 @external(erlang, "tty_ffi", "stdin_is_tty")

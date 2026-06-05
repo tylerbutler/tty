@@ -64,6 +64,32 @@ Notes:
 - `TERM` containing `256` yields `Ansi256`.
 - `CI` is treated as enabled if the variable is set to any value.
 
+## Background detection
+
+`detect_background(stream)` reports whether the terminal has a `Light` or `Dark`
+background, or `Unknown` when it cannot tell. It reads the `COLORFGBG`
+environment variable (set by terminals such as rxvt and konsole) and inspects
+the background palette index (the second `;`-separated field):
+
+- `0`–`6` or `8` → `Dark`
+- `7` or `9`–`15` → `Light`
+- unset, malformed, or out of range → `Unknown`
+
+Detection is conservative: it only reports `Light`/`Dark` on a clear signal and
+never guesses from `TERM`. Most terminals do not set `COLORFGBG`, so `Unknown`
+is common — consumers should apply their own default (a common choice is to
+treat `Unknown` as `Dark`) or accept an explicit override.
+
+```gleam
+import tty.{Dark, Light, Stdout, Unknown, detect_background}
+
+case detect_background(Stdout) {
+  Light -> render_for_light_background()
+  Dark -> render_for_dark_background()
+  Unknown -> render_default_theme()
+}
+```
+
 ## Public API guidance
 
 For 1.x, this module intentionally exposes a small stable surface:
@@ -72,13 +98,17 @@ For 1.x, this module intentionally exposes a small stable surface:
 - `detect_color_level`
 - `color_level_at_least`
 - `color_level_compare`
+- `detect_background`
 - `Stream`
 - `ColorLevel`
+- `Background`
 
 `ColorLevel` is intentionally closed for 1.x (`NoColor`, `Basic`, `Ansi256`,
 `TrueColor`) to keep matching behavior predictable. Compare levels with
 `color_level_at_least` or `color_level_compare` rather than relying on any
 numeric rank; the integer mapping is an internal implementation detail.
+
+`Background` is likewise closed for 1.x (`Light`, `Dark`, `Unknown`).
 
 You can also gate behavior on the detected level without matching every
 variant:
@@ -117,6 +147,7 @@ or Worker contexts), this library degrades safely:
 - `is_tty(_)` returns `False`
 - env vars are treated as unset
 - `detect_color_level(_)` resolves to `NoColor`
+- `detect_background(_)` resolves to `Unknown`
 
 ## Requirements
 
