@@ -55,6 +55,7 @@ include = ["src/", "test/"]
 # Env lookups return Result(String, Nil): an absent var (Error(Nil)) carries no
 # information to propagate — it is a normal fallback branch, not a failure.
 "src/tty/resolve_color_level.gleam" = ["thrown_away_error"]
+"src/tty/resolve_background.gleam" = ["thrown_away_error"]
 # color_level_compare(a, b) mirrors the stdlib int.compare / Order convention;
 # the frozen 1.x API uses positional a/b. (color_level_at_least already labels.)
 "src/tty.gleam" = ["label_possible"]

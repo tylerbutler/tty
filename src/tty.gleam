@@ -206,8 +206,7 @@ pub fn detect_color_level(stream: Stream) -> ColorLevel {
 ///   Unknown -> render_default_theme()
 /// }
 /// ```
-pub fn detect_background(stream: Stream) -> Background {
-  let _ = stream
+pub fn detect_background(_stream: Stream) -> Background {
   let rank = background_resolver.resolve_background(env: get_env)
   // The resolver is statically guaranteed to return a rank in 0..2, so this
   // can only fail if that internal invariant is ever broken. Crashing loudly
