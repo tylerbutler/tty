@@ -1,4 +1,5 @@
 import gleam/int
+import gleam/list
 import gleam/string
 
 /// Internal terminal background resolution logic.
@@ -14,10 +15,17 @@ pub fn resolve_background(env env: fn(String) -> Result(String, Nil)) -> Int {
   }
 }
 
+// COLORFGBG is `fg;bg` or, in rxvt's extended form, `fg;xpm;bg` — the
+// background is always the LAST `;`-separated field (vim parses it the same
+// way). A value with no `;` carries no background field at all.
 fn resolve_colorfgbg(value: String) -> Int {
   case string.split(value, ";") {
-    [_, bg, ..] -> classify_background(string.trim(bg))
-    _ -> 0
+    [_, ..rest] ->
+      case list.last(rest) {
+        Ok(bg) -> classify_background(string.trim(bg))
+        Error(Nil) -> 0
+      }
+    [] -> 0
   }
 }
 
