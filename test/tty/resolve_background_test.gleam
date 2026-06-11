@@ -67,8 +67,18 @@ pub fn fg_bg_extra_dark_test() {
   |> expect.to_equal(Dark)
 }
 
-pub fn fg_bg_extra_light_test() {
+pub fn three_field_numeric_uses_last_field_test() {
   resolve(env: env([#("COLORFGBG", "15;7;0")]))
+  |> expect.to_equal(Dark)
+}
+
+pub fn rxvt_three_field_dark_test() {
+  resolve(env: env([#("COLORFGBG", "15;default;0")]))
+  |> expect.to_equal(Dark)
+}
+
+pub fn rxvt_three_field_light_test() {
+  resolve(env: env([#("COLORFGBG", "0;default;7")]))
   |> expect.to_equal(Light)
 }
 
