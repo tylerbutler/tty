@@ -1,9 +1,0 @@
-kind: Fixed
-body: |-
-  `detect_background` now reads the background palette index from the **last**
-  `;`-separated field of `COLORFGBG` instead of the second, matching the
-  convention used by rxvt and vim. The common two-field form (`fg;bg`) behaves
-  the same; rxvt's three-field form (`fg;xpm;bg`, emitted when a background
-  image or transparency is in use) is now detected correctly instead of
-  returning `Unknown` or the wrong background.
-time: 2026-06-09T13:29:00.000000-07:00
