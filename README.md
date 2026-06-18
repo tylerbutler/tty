@@ -69,7 +69,8 @@ Notes:
 `detect_background(stream)` reports whether the terminal has a `Light` or `Dark`
 background, or `Unknown` when it cannot tell. It reads the `COLORFGBG`
 environment variable (set by terminals such as rxvt and konsole) and inspects
-the background palette index (the second `;`-separated field):
+the background palette index. `COLORFGBG` is `fg;bg` or, in rxvt's extended
+form, `fg;xpm;bg` — the background is always the last `;`-separated field:
 
 - `0`–`6` or `8` → `Dark`
 - `7` or `9`–`15` → `Light`
