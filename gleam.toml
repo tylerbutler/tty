@@ -9,6 +9,7 @@ gleam = ">= 1.11.0"
 internal_modules = [
   "tty/resolve_background",
   "tty/resolve_color_level",
+  "tty/resolve_query_background",
 ]
 
 [javascript]
