@@ -1,4 +1,4 @@
-import { getEnv, stdinIsTty } from "../tty_ffi.mjs";
+import { getEnv, queryOsc11, stdinIsTty } from "../tty_ffi.mjs";
 
 // Temporarily removes the global `process` to simulate a non-Node runtime
 // (browser, Worker, Deno without node-compat) and verifies the FFI degrades to
@@ -9,7 +9,11 @@ export function degradesWithoutProcess() {
   const saved = globalThis.process;
   try {
     globalThis.process = undefined;
-    return getEnv("PATH") === undefined && stdinIsTty() === false;
+    return (
+      getEnv("PATH") === undefined &&
+      stdinIsTty() === false &&
+      queryOsc11("stdout", 100) === undefined
+    );
   } finally {
     globalThis.process = saved;
   }
