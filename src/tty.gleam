@@ -4,10 +4,6 @@
 //// 1. Is this stream connected to a terminal? (`is_tty`)
 //// 2. What level of ANSI color does it support? (`detect_color_level`)
 
-@target(javascript)
-import gleam/dynamic.{type Dynamic}
-@target(javascript)
-import gleam/dynamic/decode
 import gleam/int
 import gleam/order
 import tty/resolve_background as background_resolver
@@ -229,23 +225,6 @@ fn stdout_is_tty() -> Bool
 @external(javascript, "./tty_ffi.mjs", "stderrIsTty")
 fn stderr_is_tty() -> Bool
 
-@target(erlang)
 @external(erlang, "tty_ffi", "get_env")
-fn raw_get_env_erlang(name: String) -> Result(String, Nil)
-
-@target(javascript)
 @external(javascript, "./tty_ffi.mjs", "getEnv")
-fn raw_get_env_js(name: String) -> Dynamic
-
-@target(erlang)
-fn get_env(name: String) -> Result(String, Nil) {
-  raw_get_env_erlang(name)
-}
-
-@target(javascript)
-fn get_env(name: String) -> Result(String, Nil) {
-  case decode.run(raw_get_env_js(name), decode.string) {
-    Ok(s) -> Ok(s)
-    Error(_) -> Error(Nil)
-  }
-}
+fn get_env(name: String) -> Result(String, Nil)
