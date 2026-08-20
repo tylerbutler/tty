@@ -1,0 +1,3 @@
+kind: Added
+body: Add a bounded Erlang OSC 11 transport for terminal background queries, with serialized terminal access, terminal-state restoration, and safe timeouts.
+time: 2026-08-19T18:02:12.645421-07:00
