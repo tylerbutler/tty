@@ -1,0 +1,3 @@
+kind: Added
+body: JavaScript runtimes can now query terminal background colors through a bounded OSC 11 transport that restores the terminal's prior raw mode after success, timeout, or transport failure.
+time: 2026-08-19T17:53:15.194824-07:00
