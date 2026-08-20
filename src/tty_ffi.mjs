@@ -4,6 +4,8 @@
 // node-compat, browsers, Workers) so failures degrade to "not a TTY" /
 // "env unset" rather than throwing a ReferenceError into Gleam code.
 
+import { Error as GleamError, Ok } from "./gleam.mjs";
+
 function hasProcess() {
   return typeof process !== "undefined" && process !== null;
 }
@@ -55,11 +57,14 @@ export function stderrIsTty() {
   return streamIsTty("stderr");
 }
 
-// Returns the env-var value or `undefined`. The Gleam side decodes this
-// `Dynamic` into a `Result(String, Nil)`.
+// Returns a Gleam Result(String, Nil), matching the Erlang FFI contract.
 export function getEnv(name) {
-  if (!hasProcess() || !process.env) return undefined;
-  return process.env[name];
+  if (!hasProcess() || !process.env) return new GleamError(undefined);
+
+  const value = process.env[name];
+  return typeof value === "string"
+    ? new Ok(value)
+    : new GleamError(undefined);
 }
 
 // Runs synchronously so the caller never regains control while raw mode is
