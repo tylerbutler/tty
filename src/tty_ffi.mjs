@@ -17,11 +17,16 @@ function streamIsTty(name) {
 const OSC_11_QUERY = "\x1b]11;?\x07";
 const MAX_OSC_RESPONSE_LENGTH = 4096;
 const MAX_OSC_TIMEOUT_MS = 100;
-const MAX_STALLED_CLOCK_READS = 10_000;
+const STREAM_FILE_DESCRIPTORS = { stdin: 0, stdout: 1, stderr: 2 };
 
-function isSupportedNode() {
-  if (!hasProcess() || typeof process.versions?.node !== "string") return false;
-  const match = /^(\d+)\./.exec(process.versions.node);
+const nodeChildProcess =
+  hasProcess() && typeof process.versions?.node === "string"
+    ? await import("node:child_process").catch(() => undefined)
+    : undefined;
+
+function isSupportedNode(runtime) {
+  if (!runtime || typeof runtime.versions?.node !== "string") return false;
+  const match = /^(\d+)\./.exec(runtime.versions.node);
   return match !== null && Number(match[1]) >= 20;
 }
 
@@ -46,6 +51,61 @@ function terminatedResponse(response) {
   return end < 0 ? undefined : response.slice(0, end);
 }
 
+export const osc11WorkerSource = `
+import fs from "node:fs";
+
+const outputFd = Number(process.argv[1]);
+const timeoutMs = Number(process.argv[2]);
+const query = ${JSON.stringify(OSC_11_QUERY)};
+const maxResponseLength = ${MAX_OSC_RESPONSE_LENGTH};
+let raw = "";
+let finished = false;
+let timer;
+
+function terminatedResponse(response) {
+  const bel = response.indexOf("\\x07");
+  const st = response.indexOf("\\x1b\\\\");
+  let end = -1;
+
+  if (bel >= 0 && st >= 0) end = Math.min(bel + 1, st + 2);
+  else if (bel >= 0) end = bel + 1;
+  else if (st >= 0) end = st + 2;
+
+  return end < 0 ? undefined : response.slice(0, end);
+}
+
+function finish(response) {
+  if (finished) return;
+  finished = true;
+  clearTimeout(timer);
+
+  if (response !== undefined) {
+    fs.writeSync(3, Buffer.from(response, "latin1"));
+  }
+  process.exit(0);
+}
+
+process.stdin.setEncoding("latin1");
+process.stdin.on("data", (chunk) => {
+  raw += chunk;
+  if (raw.length > maxResponseLength) return finish();
+
+  const complete = terminatedResponse(raw);
+  if (complete !== undefined) finish(complete);
+});
+process.stdin.on("end", () => finish());
+process.stdin.on("error", () => finish());
+process.stdin.resume();
+
+timer = setTimeout(() => finish(), timeoutMs);
+
+try {
+  fs.writeSync(outputFd, Buffer.from(query, "latin1"));
+} catch {
+  finish();
+}
+`;
+
 export function stdinIsTty() {
   return streamIsTty("stdin");
 }
@@ -68,20 +128,25 @@ export function getEnv(name) {
     : new GleamError(undefined);
 }
 
-function queryOsc11WithProcess(streamName, timeoutMs) {
+export function queryOsc11WithRuntime(
+  streamName,
+  timeoutMs,
+  runtime,
+  spawnSync,
+) {
   if (
-    !isSupportedNode() ||
+    !isSupportedNode(runtime) ||
     !["stdin", "stdout", "stderr"].includes(streamName) ||
     !Number.isInteger(timeoutMs) ||
     timeoutMs <= 0 ||
-    timeoutMs > MAX_OSC_TIMEOUT_MS
+    timeoutMs > MAX_OSC_TIMEOUT_MS ||
+    typeof spawnSync !== "function"
   ) {
     return undefined;
   }
 
-  const stdin = process.stdin;
-  const output = process[streamName];
-  const clock = process.hrtime;
+  const stdin = runtime.stdin;
+  const output = runtime[streamName];
   if (
     !stdin ||
     !output ||
@@ -89,52 +154,45 @@ function queryOsc11WithProcess(streamName, timeoutMs) {
     output.isTTY !== true ||
     typeof stdin.isRaw !== "boolean" ||
     typeof stdin.setRawMode !== "function" ||
-    typeof stdin.read !== "function" ||
-    stdin.readableFlowing !== false ||
-    typeof output.write !== "function" ||
-    typeof clock?.bigint !== "function"
+    typeof runtime.execPath !== "string"
   ) {
     return undefined;
   }
-
-  const startedAt = clock.bigint();
-  if (typeof startedAt !== "bigint") return undefined;
 
   const previousRawMode = stdin.isRaw;
   let response;
 
   try {
     stdin.setRawMode(true);
-    if (output.write(OSC_11_QUERY) !== true) return undefined;
-
-    const deadline = startedAt + BigInt(timeoutMs) * 1_000_000n;
-    let previousNow = startedAt;
-    let stalledClockReads = 0;
-    let raw = "";
-    while (true) {
-      const now = clock.bigint();
-      if (typeof now !== "bigint" || now < previousNow) return undefined;
-      if (now >= deadline) break;
-
-      stalledClockReads = now === previousNow ? stalledClockReads + 1 : 0;
-      if (stalledClockReads > MAX_STALLED_CLOCK_READS) return undefined;
-      previousNow = now;
-
-      const chunk = stdin.read();
-      if (chunk !== null && chunk !== undefined) {
-        const text = chunkToString(chunk);
-        if (text === undefined) return undefined;
-
-        raw += text;
-        if (raw.length > MAX_OSC_RESPONSE_LENGTH) return undefined;
-
-        const complete = terminatedResponse(raw);
-        if (complete !== undefined) {
-          response = complete;
-          break;
-        }
-      }
+    const child = spawnSync(
+      runtime.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        osc11WorkerSource,
+        String(STREAM_FILE_DESCRIPTORS[streamName]),
+        String(timeoutMs),
+      ],
+      {
+        encoding: "latin1",
+        killSignal: "SIGKILL",
+        maxBuffer: MAX_OSC_RESPONSE_LENGTH,
+        stdio: ["inherit", "inherit", "inherit", "pipe"],
+        timeout: timeoutMs,
+        windowsHide: true,
+      },
+    );
+    if (
+      child?.status !== 0 ||
+      child.signal !== null ||
+      child.error !== undefined
+    ) {
+      return undefined;
     }
+
+    const raw = chunkToString(child.output?.[3]);
+    if (!raw || raw.length > MAX_OSC_RESPONSE_LENGTH) return undefined;
+    response = terminatedResponse(raw);
   } catch {
     response = undefined;
   } finally {
@@ -148,12 +206,16 @@ function queryOsc11WithProcess(streamName, timeoutMs) {
   return response;
 }
 
-// Runs synchronously so the caller never regains control while raw mode is
-// active. A paused Node Readable's read() is nonblocking; hosts without that
-// bounded path are rejected before terminal state is changed.
+// A short-lived child owns the asynchronous read while spawnSync bounds the
+// synchronous public API. The parent always restores its original raw mode.
 export function queryOsc11(streamName, timeoutMs) {
   try {
-    return queryOsc11WithProcess(streamName, timeoutMs);
+    return queryOsc11WithRuntime(
+      streamName,
+      timeoutMs,
+      process,
+      nodeChildProcess?.spawnSync,
+    );
   } catch {
     return undefined;
   }

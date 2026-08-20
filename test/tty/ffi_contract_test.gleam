@@ -17,6 +17,10 @@ fn rejects_unsupported_transports_without_mutation() -> Bool
 fn reads_terminated_responses_and_restores_mode() -> Bool
 
 @target(javascript)
+@external(javascript, "./osc_transport_probe_ffi.mjs", "supportsFreshTtyAndDelayedResponses")
+fn supports_fresh_tty_and_delayed_responses() -> Bool
+
+@target(javascript)
 @external(javascript, "./osc_transport_probe_ffi.mjs", "restoresModeOnEveryFailure")
 fn restores_mode_on_every_failure() -> Bool
 
@@ -81,6 +85,12 @@ pub fn unsupported_js_osc_transports_do_not_mutate_terminal_test() {
 @target(javascript)
 pub fn js_osc_transport_reads_to_terminator_and_restores_mode_test() {
   reads_terminated_responses_and_restores_mode()
+  |> expect.to_be_true
+}
+
+@target(javascript)
+pub fn js_osc_transport_supports_fresh_tty_and_delayed_response_test() {
+  supports_fresh_tty_and_delayed_responses()
   |> expect.to_be_true
 }
 

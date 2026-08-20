@@ -1,6 +1,12 @@
-import { queryOsc11 } from "../tty_ffi.mjs";
+import { spawnSync as nodeSpawnSync } from "node:child_process";
+import {
+  osc11WorkerSource,
+  queryOsc11,
+  queryOsc11WithRuntime,
+} from "../tty_ffi.mjs";
 
 const RESPONSE = "\x1b]11;rgb:ffff/ffff/ffff";
+const QUERY = "\x1b]11;?\x07";
 
 function withProcess(mock, probe) {
   const saved = globalThis.process;
@@ -13,71 +19,54 @@ function withProcess(mock, probe) {
 }
 
 function mockProcess({
-  chunks = [],
   initialRaw = false,
   nodeVersion = "20.0.0",
-  onClock,
-  onRead,
+  onSpawn,
   onSetRawMode,
-  onWrite,
 } = {}) {
-  let now = 0n;
   const rawModes = [];
-  const writes = [];
+  const spawns = [];
   const stdin = {
     isTTY: true,
     isRaw: initialRaw,
-    readableFlowing: false,
-    read() {
-      if (onRead) return onRead();
-      return chunks.length === 0 ? null : chunks.shift();
-    },
+    readableFlowing: null,
     setRawMode(mode) {
       rawModes.push(mode);
       stdin.isRaw = mode;
       if (onSetRawMode) onSetRawMode(mode);
     },
   };
-  const stdout = {
-    isTTY: true,
-    write(value) {
-      writes.push(value);
-      if (onWrite) return onWrite(value);
-      return true;
-    },
+  const stdout = { isTTY: true };
+  const process = {
+    execPath: "/mock/node",
+    versions: { node: nodeVersion },
+    stdin,
+    stdout,
+    stderr: { ...stdout },
+  };
+  const spawnSync = (...args) => {
+    spawns.push(args);
+    if (onSpawn) return onSpawn(...args);
+    return { error: undefined, output: [null, null, null, ""], signal: null, status: 0 };
   };
 
   return {
-    process: {
-      versions: { node: nodeVersion },
-      hrtime: {
-        bigint() {
-          if (onClock) return onClock();
-          now += 1_000_000n;
-          return now;
-        },
-      },
-      stdin,
-      stdout,
-      stderr: { ...stdout },
-    },
+    process,
     rawModes,
-    writes,
+    spawns,
+    spawnSync,
   };
 }
 
 export function rejectsUnsupportedTransportsWithoutMutation() {
-  const missingRead = mockProcess();
-  delete missingRead.process.stdin.read;
-
-  const unpaused = mockProcess();
-  unpaused.process.stdin.readableFlowing = null;
-
-  const missingClock = mockProcess();
-  delete missingClock.process.hrtime;
+  const missingRawMode = mockProcess();
+  delete missingRawMode.process.stdin.setRawMode;
 
   const nonTtyOutput = mockProcess();
   nonTtyOutput.process.stdout.isTTY = false;
+
+  const missingExecutable = mockProcess();
+  delete missingExecutable.process.execPath;
 
   const malformed = mockProcess();
   Object.defineProperty(malformed.process.stdin, "isRaw", {
@@ -88,35 +77,46 @@ export function rejectsUnsupportedTransportsWithoutMutation() {
 
   const probes = [
     mockProcess({ nodeVersion: "19.9.0" }),
-    missingRead,
-    unpaused,
-    missingClock,
+    missingRawMode,
     nonTtyOutput,
-    malformed,
+    missingExecutable,
   ];
 
   const invalidArguments = mockProcess();
-  const invalidArgumentsRejected =
-    withProcess(invalidArguments.process, () => {
-      return (
-        queryOsc11("unknown", 100) === undefined &&
-        queryOsc11("stdout", 0) === undefined &&
-        queryOsc11("stdout", 101) === undefined
-      );
-    }) &&
+  const invalidArgumentsRejected = [
+    ["unknown", 100],
+    ["stdout", 0],
+    ["stdout", 101],
+  ].every(
+    ([stream, timeout]) =>
+      queryOsc11WithRuntime(
+        stream,
+        timeout,
+        invalidArguments.process,
+        invalidArguments.spawnSync,
+      ) === undefined,
+  ) &&
     invalidArguments.rawModes.length === 0 &&
-    invalidArguments.writes.length === 0;
+    invalidArguments.spawns.length === 0;
 
   return (
     withProcess({}, () => queryOsc11("stdout", 100) === undefined) &&
+    withProcess(
+      malformed.process,
+      () => queryOsc11("stdout", 100) === undefined,
+    ) &&
+    malformed.rawModes.length === 0 &&
+    malformed.spawns.length === 0 &&
     probes.every(
       (probe) =>
-        withProcess(
+        queryOsc11WithRuntime(
+          "stdout",
+          100,
           probe.process,
-          () => queryOsc11("stdout", 100) === undefined,
-        ) &&
+          probe.spawnSync,
+        ) === undefined &&
         probe.rawModes.length === 0 &&
-        probe.writes.length === 0,
+        probe.spawns.length === 0,
     ) &&
     invalidArgumentsRejected
   );
@@ -124,25 +124,45 @@ export function rejectsUnsupportedTransportsWithoutMutation() {
 
 export function readsTerminatedResponsesAndRestoresMode() {
   const bel = mockProcess({
-    chunks: [RESPONSE.slice(0, 12), `${RESPONSE.slice(12)}\x07ignored`],
+    onSpawn() {
+      return {
+        error: undefined,
+        output: [null, null, null, `${RESPONSE}\x07ignored`],
+        signal: null,
+        status: 0,
+      };
+    },
   });
-  const belResult = withProcess(bel.process, () =>
-    queryOsc11("stdout", 100),
+  const belResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    bel.process,
+    bel.spawnSync,
   );
 
   const st = mockProcess({
-    chunks: [RESPONSE, "\x1b", "\\ignored"],
     initialRaw: true,
+    onSpawn() {
+      return {
+        error: undefined,
+        output: [null, null, null, `${RESPONSE}\x1b\\ignored`],
+        signal: null,
+        status: 0,
+      };
+    },
   });
-  const stResult = withProcess(st.process, () =>
-    queryOsc11("stdout", 100),
+  const stResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    st.process,
+    st.spawnSync,
   );
 
   return (
     belResult === `${RESPONSE}\x07` &&
     stResult === `${RESPONSE}\x1b\\` &&
-    bel.writes.join("") === "\x1b]11;?\x07" &&
-    st.writes.join("") === "\x1b]11;?\x07" &&
+    bel.spawns.length === 1 &&
+    st.spawns.length === 1 &&
     bel.rawModes.join(",") === "true,false" &&
     st.rawModes.join(",") === "true,true" &&
     bel.process.stdin.isRaw === false &&
@@ -150,48 +170,128 @@ export function readsTerminatedResponsesAndRestoresMode() {
   );
 }
 
+export function supportsFreshTtyAndDelayedResponses() {
+  const fresh = mockProcess({
+    onSpawn(_executable, args, options) {
+      if (
+        fresh.process.stdin.isRaw !== true ||
+        args.at(-2) !== "1" ||
+        args.at(-1) !== "100" ||
+        options.timeout !== 100
+      ) {
+        throw new Error("invalid worker invocation");
+      }
+      return {
+        error: undefined,
+        output: [null, null, null, `${RESPONSE}\x07`],
+        signal: null,
+        status: 0,
+      };
+    },
+  });
+  const freshResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    fresh.process,
+    fresh.spawnSync,
+  );
+
+  const harness = `
+import { spawn } from "node:child_process";
+
+const workerSource = Buffer.from(process.argv[1], "base64").toString("utf8");
+const query = Buffer.from(process.argv[2], "base64").toString("latin1");
+const response = Buffer.from(process.argv[3], "base64");
+const child = spawn(
+  process.execPath,
+  ["--input-type=module", "--eval", workerSource, "1", "100"],
+  { stdio: ["pipe", "pipe", "inherit", "pipe"] },
+);
+let queryOutput = "";
+let workerResponse = "";
+let responseScheduled = false;
+const guard = setTimeout(() => process.exit(2), 1000);
+
+child.stdout.setEncoding("latin1");
+child.stdio[3].setEncoding("latin1");
+child.stdout.on("data", (chunk) => {
+  queryOutput += chunk;
+  if (!responseScheduled && queryOutput.includes(query)) {
+    responseScheduled = true;
+    setTimeout(() => child.stdin.write(response), 10);
+  }
+});
+child.stdio[3].on("data", (chunk) => {
+  workerResponse += chunk;
+});
+child.on("close", (code) => {
+  clearTimeout(guard);
+  const valid =
+    code === 0 &&
+    responseScheduled &&
+    queryOutput === query &&
+    workerResponse === response.toString("latin1");
+  process.exit(valid ? 0 : 1);
+});
+`;
+  const delayed = nodeSpawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      harness,
+      Buffer.from(osc11WorkerSource).toString("base64"),
+      Buffer.from(QUERY, "latin1").toString("base64"),
+      Buffer.from(`${RESPONSE}\x07`, "latin1").toString("base64"),
+    ],
+    { timeout: 2000 },
+  );
+
+  return (
+    fresh.process.stdin.readableFlowing === null &&
+    freshResult === `${RESPONSE}\x07` &&
+    fresh.rawModes.join(",") === "true,false" &&
+    delayed.status === 0 &&
+    delayed.error === undefined
+  );
+}
+
 export function restoresModeOnEveryFailure() {
   const timeout = mockProcess();
-  const timeoutResult = withProcess(timeout.process, () =>
-    queryOsc11("stdout", 5),
+  const timeoutResult = queryOsc11WithRuntime(
+    "stdout",
+    5,
+    timeout.process,
+    timeout.spawnSync,
   );
 
-  const writeFailure = mockProcess({
-    onWrite() {
-      throw new Error("write failed");
+  const spawnFailure = mockProcess({
+    onSpawn() {
+      throw new Error("spawn failed");
     },
   });
-  const writeResult = withProcess(writeFailure.process, () =>
-    queryOsc11("stdout", 100),
+  const spawnResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    spawnFailure.process,
+    spawnFailure.spawnSync,
   );
 
-  const readFailure = mockProcess({
-    onRead() {
-      throw new Error("read failed");
+  const childFailure = mockProcess({
+    onSpawn() {
+      return {
+        error: new Error("child failed"),
+        output: [null, null, null, ""],
+        signal: null,
+        status: null,
+      };
     },
   });
-  const readResult = withProcess(readFailure.process, () =>
-    queryOsc11("stdout", 100),
-  );
-
-  const rejectedWrite = mockProcess({
-    onWrite() {
-      return false;
-    },
-  });
-  const rejectedWriteResult = withProcess(rejectedWrite.process, () =>
-    queryOsc11("stdout", 100),
-  );
-
-  let clockReads = 0;
-  const malformedClock = mockProcess({
-    onClock() {
-      clockReads += 1;
-      return clockReads === 1 ? 0n : "invalid";
-    },
-  });
-  const malformedClockResult = withProcess(malformedClock.process, () =>
-    queryOsc11("stdout", 100),
+  const childResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    childFailure.process,
+    childFailure.spawnSync,
   );
 
   let firstModeChange = true;
@@ -203,8 +303,11 @@ export function restoresModeOnEveryFailure() {
       }
     },
   });
-  const modeResult = withProcess(modeFailure.process, () =>
-    queryOsc11("stdout", 100),
+  const modeResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    modeFailure.process,
+    modeFailure.spawnSync,
   );
 
   const restoreFailure = mockProcess({
@@ -212,16 +315,17 @@ export function restoresModeOnEveryFailure() {
       if (mode === false) throw new Error("mode restore failed");
     },
   });
-  const restoreResult = withProcess(restoreFailure.process, () =>
-    queryOsc11("stdout", 100),
+  const restoreResult = queryOsc11WithRuntime(
+    "stdout",
+    100,
+    restoreFailure.process,
+    restoreFailure.spawnSync,
   );
 
   return [
     timeout,
-    writeFailure,
-    readFailure,
-    rejectedWrite,
-    malformedClock,
+    spawnFailure,
+    childFailure,
     modeFailure,
     restoreFailure,
   ].every(
@@ -230,10 +334,8 @@ export function restoresModeOnEveryFailure() {
       probe.rawModes.join(",") === "true,false",
   ) &&
     timeoutResult === undefined &&
-    writeResult === undefined &&
-    readResult === undefined &&
-    rejectedWriteResult === undefined &&
-    malformedClockResult === undefined &&
+    spawnResult === undefined &&
+    childResult === undefined &&
     modeResult === undefined &&
     restoreResult === undefined;
 }
