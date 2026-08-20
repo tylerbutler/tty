@@ -13,71 +13,63 @@ function withProcess(mock, probe) {
 }
 
 function mockProcess({
-  chunks = [],
   initialRaw = false,
   nodeVersion = "20.0.0",
-  onClock,
-  onRead,
   onSetRawMode,
-  onWrite,
+  onSpawn,
+  response = `${RESPONSE}\x07`,
 } = {}) {
-  let now = 0n;
   const rawModes = [];
-  const writes = [];
+  const spawns = [];
   const stdin = {
     isTTY: true,
     isRaw: initialRaw,
-    readableFlowing: false,
-    read() {
-      if (onRead) return onRead();
-      return chunks.length === 0 ? null : chunks.shift();
-    },
+    readableFlowing: null,
     setRawMode(mode) {
       rawModes.push(mode);
       stdin.isRaw = mode;
       if (onSetRawMode) onSetRawMode(mode);
     },
   };
-  const stdout = {
-    isTTY: true,
-    write(value) {
-      writes.push(value);
-      if (onWrite) return onWrite(value);
-      return true;
-    },
-  };
+  const stdout = { isTTY: true };
 
   return {
     process: {
       versions: { node: nodeVersion },
-      hrtime: {
-        bigint() {
-          if (onClock) return onClock();
-          now += 1_000_000n;
-          return now;
-        },
+      execPath: "/mock/node",
+      getBuiltinModule(name) {
+        if (name !== "child_process") return undefined;
+        return {
+          spawnSync(executable, arguments_, options) {
+            spawns.push({ executable, arguments_, options });
+            if (onSpawn) return onSpawn();
+            return {
+              error: undefined,
+              output: [null, null, null, response],
+              signal: null,
+              status: 0,
+            };
+          },
+        };
       },
       stdin,
       stdout,
       stderr: { ...stdout },
     },
     rawModes,
-    writes,
+    spawns,
   };
 }
 
 export function rejectsUnsupportedTransportsWithoutMutation() {
-  const missingRead = mockProcess();
-  delete missingRead.process.stdin.read;
-
-  const unpaused = mockProcess();
-  unpaused.process.stdin.readableFlowing = null;
-
-  const missingClock = mockProcess();
-  delete missingClock.process.hrtime;
+  const missingRawMode = mockProcess();
+  delete missingRawMode.process.stdin.setRawMode;
 
   const nonTtyOutput = mockProcess();
   nonTtyOutput.process.stdout.isTTY = false;
+
+  const missingSpawn = mockProcess();
+  missingSpawn.process.getBuiltinModule = () => undefined;
 
   const malformed = mockProcess();
   Object.defineProperty(malformed.process.stdin, "isRaw", {
@@ -88,10 +80,9 @@ export function rejectsUnsupportedTransportsWithoutMutation() {
 
   const probes = [
     mockProcess({ nodeVersion: "19.9.0" }),
-    missingRead,
-    unpaused,
-    missingClock,
+    missingRawMode,
     nonTtyOutput,
+    missingSpawn,
     malformed,
   ];
 
@@ -105,7 +96,7 @@ export function rejectsUnsupportedTransportsWithoutMutation() {
       );
     }) &&
     invalidArguments.rawModes.length === 0 &&
-    invalidArguments.writes.length === 0;
+    invalidArguments.spawns.length === 0;
 
   return (
     withProcess({}, () => queryOsc11("stdout", 100) === undefined) &&
@@ -116,7 +107,7 @@ export function rejectsUnsupportedTransportsWithoutMutation() {
           () => queryOsc11("stdout", 100) === undefined,
         ) &&
         probe.rawModes.length === 0 &&
-        probe.writes.length === 0,
+        probe.spawns.length === 0,
     ) &&
     invalidArgumentsRejected
   );
@@ -124,15 +115,15 @@ export function rejectsUnsupportedTransportsWithoutMutation() {
 
 export function readsTerminatedResponsesAndRestoresMode() {
   const bel = mockProcess({
-    chunks: [RESPONSE.slice(0, 12), `${RESPONSE.slice(12)}\x07ignored`],
+    response: `${RESPONSE}\x07ignored`,
   });
   const belResult = withProcess(bel.process, () =>
     queryOsc11("stdout", 100),
   );
 
   const st = mockProcess({
-    chunks: [RESPONSE, "\x1b", "\\ignored"],
     initialRaw: true,
+    response: `${RESPONSE}\x1b\\ignored`,
   });
   const stResult = withProcess(st.process, () =>
     queryOsc11("stdout", 100),
@@ -141,75 +132,66 @@ export function readsTerminatedResponsesAndRestoresMode() {
   return (
     belResult === `${RESPONSE}\x07` &&
     stResult === `${RESPONSE}\x1b\\` &&
-    bel.writes.join("") === "\x1b]11;?\x07" &&
-    st.writes.join("") === "\x1b]11;?\x07" &&
-    bel.rawModes.join(",") === "true,false" &&
-    st.rawModes.join(",") === "true,true" &&
+    bel.spawns[0].executable === "/mock/node" &&
+    bel.spawns[0].arguments_.slice(-2).join(",") === "stdout,100" &&
+    bel.spawns[0].options.stdio.join(",") === "inherit,inherit,inherit,pipe" &&
+    bel.rawModes.join(",") === "false" &&
+    st.rawModes.join(",") === "true" &&
     bel.process.stdin.isRaw === false &&
     st.process.stdin.isRaw === true
   );
 }
 
 export function restoresModeOnEveryFailure() {
-  const timeout = mockProcess();
+  const timeout = mockProcess({
+    onSpawn() {
+      return {
+        error: new Error("timed out"),
+        output: [null, null, null, null],
+        signal: "SIGTERM",
+        status: null,
+      };
+    },
+  });
   const timeoutResult = withProcess(timeout.process, () =>
     queryOsc11("stdout", 5),
   );
 
-  const writeFailure = mockProcess({
-    onWrite() {
-      throw new Error("write failed");
+  const spawnFailure = mockProcess({
+    onSpawn() {
+      throw new Error("spawn failed");
     },
   });
-  const writeResult = withProcess(writeFailure.process, () =>
+  const spawnResult = withProcess(spawnFailure.process, () =>
     queryOsc11("stdout", 100),
   );
 
-  const readFailure = mockProcess({
-    onRead() {
-      throw new Error("read failed");
-    },
+  const emptyResponse = mockProcess({
+    response: "",
   });
-  const readResult = withProcess(readFailure.process, () =>
+  const emptyResult = withProcess(emptyResponse.process, () =>
     queryOsc11("stdout", 100),
   );
 
-  const rejectedWrite = mockProcess({
-    onWrite() {
-      return false;
-    },
+  const oversizedResponse = mockProcess({
+    response: "x".repeat(4097),
   });
-  const rejectedWriteResult = withProcess(rejectedWrite.process, () =>
+  const oversizedResult = withProcess(oversizedResponse.process, () =>
     queryOsc11("stdout", 100),
   );
 
-  let clockReads = 0;
-  const malformedClock = mockProcess({
-    onClock() {
-      clockReads += 1;
-      return clockReads === 1 ? 0n : "invalid";
+  const malformedResult = mockProcess({
+    onSpawn() {
+      return {};
     },
   });
-  const malformedClockResult = withProcess(malformedClock.process, () =>
-    queryOsc11("stdout", 100),
-  );
-
-  let firstModeChange = true;
-  const modeFailure = mockProcess({
-    onSetRawMode() {
-      if (firstModeChange) {
-        firstModeChange = false;
-        throw new Error("mode change failed");
-      }
-    },
-  });
-  const modeResult = withProcess(modeFailure.process, () =>
+  const malformedResponse = withProcess(malformedResult.process, () =>
     queryOsc11("stdout", 100),
   );
 
   const restoreFailure = mockProcess({
-    onSetRawMode(mode) {
-      if (mode === false) throw new Error("mode restore failed");
+    onSetRawMode() {
+      throw new Error("mode restore failed");
     },
   });
   const restoreResult = withProcess(restoreFailure.process, () =>
@@ -218,22 +200,97 @@ export function restoresModeOnEveryFailure() {
 
   return [
     timeout,
-    writeFailure,
-    readFailure,
-    rejectedWrite,
-    malformedClock,
-    modeFailure,
+    spawnFailure,
+    emptyResponse,
+    oversizedResponse,
+    malformedResult,
     restoreFailure,
   ].every(
     (probe) =>
       probe.process.stdin.isRaw === false &&
-      probe.rawModes.join(",") === "true,false",
+      probe.rawModes.join(",") === "false",
   ) &&
     timeoutResult === undefined &&
-    writeResult === undefined &&
-    readResult === undefined &&
-    rejectedWriteResult === undefined &&
-    malformedClockResult === undefined &&
-    modeResult === undefined &&
+    spawnResult === undefined &&
+    emptyResult === undefined &&
+    oversizedResult === undefined &&
+    malformedResponse === undefined &&
     restoreResult === undefined;
+}
+
+export function receivesScheduledResponseInChildProcess() {
+  const childProcess = process.getBuiltinModule?.("child_process");
+  if (typeof childProcess?.spawnSync !== "function") return false;
+
+  const ffiUrl = new URL("../tty_ffi.mjs", import.meta.url).href;
+  const script = `
+    import { EventEmitter } from "node:events";
+    import { runOscQueryChild } from ${JSON.stringify(ffiUrl)};
+
+    const rawModes = [];
+    const writes = [];
+    let resumed = false;
+    let paused = false;
+
+    class Input extends EventEmitter {
+      isRaw = false;
+      setRawMode(mode) {
+        rawModes.push(mode);
+        this.isRaw = mode;
+      }
+      resume() { resumed = true; }
+      pause() { paused = true; }
+    }
+
+    const stdin = new Input();
+    const runtime = {
+      stdin,
+      stdout: {
+        write(value) {
+          writes.push(value);
+          setTimeout(
+            () => stdin.emit("data", Buffer.from(${JSON.stringify(`${RESPONSE}\x07`)})),
+            5,
+          );
+        },
+      },
+      getBuiltinModule(name) {
+        if (name !== "fs") return undefined;
+        return {
+          writeSync(fd, response) {
+            console.log(JSON.stringify({
+              fd,
+              paused,
+              rawModes,
+              response,
+              resumed,
+              writes,
+            }));
+          },
+        };
+      },
+    };
+
+    runOscQueryChild(runtime, "stdout", 50);
+  `;
+  const result = childProcess.spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", script],
+    { encoding: "utf8", timeout: 1000 },
+  );
+  if (result.status !== 0 || result.signal !== null) return false;
+
+  try {
+    const probe = JSON.parse(result.stdout.trim());
+    return (
+      probe.fd === 3 &&
+      probe.paused === true &&
+      probe.rawModes.join(",") === "true,false" &&
+      probe.response === `${RESPONSE}\x07` &&
+      probe.resumed === true &&
+      probe.writes.join("") === "\x1b]11;?\x07"
+    );
+  } catch {
+    return false;
+  }
 }

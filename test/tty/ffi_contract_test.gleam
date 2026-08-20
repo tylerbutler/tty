@@ -20,6 +20,10 @@ fn reads_terminated_responses_and_restores_mode() -> Bool
 @external(javascript, "./osc_transport_probe_ffi.mjs", "restoresModeOnEveryFailure")
 fn restores_mode_on_every_failure() -> Bool
 
+@target(javascript)
+@external(javascript, "./osc_transport_probe_ffi.mjs", "receivesScheduledResponseInChildProcess")
+fn receives_scheduled_response_in_child_process() -> Bool
+
 @target(erlang)
 pub fn invalid_env_name_returns_error_test() {
   invalid_env_name_returns_error()
@@ -47,5 +51,11 @@ pub fn js_osc_transport_reads_to_terminator_and_restores_mode_test() {
 @target(javascript)
 pub fn js_osc_transport_restores_mode_on_failure_test() {
   restores_mode_on_every_failure()
+  |> expect.to_be_true
+}
+
+@target(javascript)
+pub fn js_osc_transport_receives_scheduled_response_test() {
+  receives_scheduled_response_in_child_process()
   |> expect.to_be_true
 }
