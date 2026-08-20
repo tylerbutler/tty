@@ -66,11 +66,12 @@ Notes:
 
 ## Background detection
 
-`detect_background(stream)` reports whether the terminal has a `Light` or `Dark`
-background, or `Unknown` when it cannot tell. It reads the `COLORFGBG`
-environment variable (set by terminals such as rxvt and konsole) and inspects
-the background palette index. `COLORFGBG` is `fg;bg` or, in rxvt's extended
-form, `fg;xpm;bg` — the background is always the last `;`-separated field:
+`detect_background(stream)` reports whether the terminal has a `Light` or
+`Dark` background, or `Unknown` when it cannot tell. It is environment-only
+and has no terminal I/O side effects. It reads the `COLORFGBG` environment
+variable (set by terminals such as rxvt and konsole) and inspects the background
+palette index. `COLORFGBG` is `fg;bg` or, in rxvt's extended form, `fg;xpm;bg`
+— the background is always the last `;`-separated field:
 
 - `0`–`6` or `8` → `Dark`
 - `7` or `9`–`15` → `Light`
@@ -91,6 +92,28 @@ case detect_background(Stdout) {
 }
 ```
 
+For applications that explicitly opt into terminal I/O,
+`query_background(stream)` sends an OSC 11 query and uses the terminal's RGB
+response. It is impure: it briefly switches terminal input to raw mode, writes
+to the selected stream, and waits for a response with a fixed 100 ms timeout.
+It returns `Unknown` immediately for non-TTY streams and also falls back to
+`Unknown` on unsupported runtimes, timeouts, malformed responses, or transport
+errors. Terminal state is restored before it returns.
+
+```gleam
+import tty.{Dark, Light, Stdout, Unknown, query_background}
+
+case query_background(Stdout) {
+  Light -> render_for_light_background()
+  Dark -> render_for_dark_background()
+  Unknown -> render_default_theme()
+}
+```
+
+Prefer `detect_background` when environment-only detection is sufficient. Use
+`query_background` only where the more accurate active probe and its terminal
+I/O side effects are acceptable.
+
 ## Public API guidance
 
 For 1.x, this module intentionally exposes a small stable surface:
@@ -100,6 +123,7 @@ For 1.x, this module intentionally exposes a small stable surface:
 - `color_level_at_least`
 - `color_level_compare`
 - `detect_background`
+- `query_background`
 - `Stream`
 - `ColorLevel`
 - `Background`
@@ -149,6 +173,11 @@ or Worker contexts), this library degrades safely:
 - env vars are treated as unset
 - `detect_color_level(_)` resolves to `NoColor`
 - `detect_background(_)` resolves to `Unknown`
+- `query_background(_)` resolves to `Unknown`
+
+The active OSC 11 query additionally requires safe raw-mode access to terminal
+input. Unsupported hosts and transports degrade to `Unknown`; non-TTY streams
+return `Unknown` without starting the query.
 
 ## Requirements
 

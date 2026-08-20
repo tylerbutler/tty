@@ -1,0 +1,3 @@
+kind: Added
+body: An opt-in `query_background(stream)` API that safely probes TTY backgrounds with OSC 11, returns `Unknown` immediately for non-TTY streams, and degrades conservatively on unsupported runtimes, timeouts, transport failures, and malformed responses.
+time: 2026-08-19T17:52:29.046148-07:00
