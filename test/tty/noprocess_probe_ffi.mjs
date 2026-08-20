@@ -1,3 +1,4 @@
+import { Error as GleamError } from "../gleam.mjs";
 import { getEnv, stdinIsTty } from "../tty_ffi.mjs";
 
 // Temporarily removes the global `process` to simulate a non-Node runtime
@@ -9,7 +10,7 @@ export function degradesWithoutProcess() {
   const saved = globalThis.process;
   try {
     globalThis.process = undefined;
-    return getEnv("PATH") === undefined && stdinIsTty() === false;
+    return getEnv("PATH") instanceof GleamError && stdinIsTty() === false;
   } finally {
     globalThis.process = saved;
   }

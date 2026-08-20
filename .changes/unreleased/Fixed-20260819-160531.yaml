@@ -1,0 +1,7 @@
+kind: Fixed
+body: |-
+  JavaScript support metadata now correctly reports `detect_color_level` and
+  `detect_background` as runnable on JavaScript. Their JavaScript environment
+  lookup FFI now returns a typed `Result` directly instead of using a
+  target-gated `Dynamic` bridge that the Gleam docs analyzer misclassified.
+time: 2026-08-19T16:05:31.587000-07:00

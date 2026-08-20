@@ -59,6 +59,7 @@ lint: format-check
 # Build API documentation
 docs:
     gleam docs build
+    node scripts/check-docs-metadata.mjs
 
 # === CHANGELOG ===
 
