@@ -5,7 +5,9 @@
     osc_non_tty_has_no_side_effects/0,
     osc_success_restores_and_stops_at_terminator/0,
     osc_timeout_is_bounded_and_restores/0,
-    osc_failures_and_exception_restore/0
+    osc_failures_and_exception_restore/0,
+    osc_whole_call_timeout_is_bounded/0,
+    osc_real_tty_reaches_io_path/0
 ]).
 
 invalid_env_name_returns_error() ->
@@ -50,11 +52,12 @@ osc_success_restores_and_stops_at_terminator() ->
 
 osc_timeout_is_bounded_and_restores() ->
     reset_probe(),
-    put(probe_read_result, {error, nil}),
+    Ops = fake_ops(terminal_options(), <<>>),
+    set_probe(probe_read_result, {error, nil}),
     Result = tty_ffi:query_background_with_ops(
         stdout,
         1000,
-        fake_ops(terminal_options(), <<>>)
+        Ops
     ),
     ReadTimeouts = [Timeout || {read, Timeout} <- events()],
     Result =:= {error, nil} andalso
@@ -70,13 +73,49 @@ osc_failures_and_exception_restore() ->
 
 failure_restores(Key, Value) ->
     reset_probe(),
-    put(Key, Value),
+    Ops = fake_ops(terminal_options(), <<"ignored">>),
+    set_probe(Key, Value),
     Result = tty_ffi:query_background_with_ops(
         stdout,
         100,
-        fake_ops(terminal_options(), <<"ignored">>)
+        Ops
     ),
     Result =:= {error, nil} andalso restored(events()).
+
+osc_whole_call_timeout_is_bounded() ->
+    lists:all(
+        fun blocked_op_is_bounded/1,
+        [
+            {getopts, fun(_Device) -> timer:sleep(250), terminal_options() end},
+            {write, fun(_Device, _Data) -> timer:sleep(250), ok end},
+            {close_input, fun(_Input, _Timeout) -> timer:sleep(250), ok end}
+        ]
+    ).
+
+blocked_op_is_bounded({Key, BlockingFun}) ->
+    reset_probe(),
+    Response = <<27, "]11;rgb:ff/00/00", 7>>,
+    Ops = maps:put(Key, BlockingFun, fake_ops(terminal_options(), Response)),
+    StartedAt = erlang:monotonic_time(millisecond),
+    Result = tty_ffi:query_background_with_ops(stdout, 100, Ops),
+    Elapsed = erlang:monotonic_time(millisecond) - StartedAt,
+    Result =:= {error, nil} andalso Elapsed =< 200.
+
+osc_real_tty_reaches_io_path() ->
+    case tty_ffi:stdout_is_tty() of
+        false ->
+            true;
+        true ->
+            StartedAt = erlang:monotonic_time(millisecond),
+            Result = tty_ffi:query_background(stdout, 100),
+            Elapsed = erlang:monotonic_time(millisecond) - StartedAt,
+            ReachedRead =
+                case Result of
+                    {ok, Response} -> is_binary(Response);
+                    {error, nil} -> Elapsed >= 50
+                end,
+            ReachedRead andalso Elapsed =< 200
+    end.
 
 terminal_options() ->
     [
@@ -91,54 +130,55 @@ terminal_options() ->
     ].
 
 fake_ops(Options, Input) ->
-    put(probe_input, Input),
+    Table = ets:new(?MODULE, [ordered_set, public]),
+    true = ets:insert(Table, [{sequence, 0}, {probe_input, Input}]),
+    put(probe_table, Table),
     #{
         getopts => fun(Device) ->
-            record({getopts, Device}),
+            record(Table, {getopts, Device}),
             Options
         end,
         setopts => fun(Device, NewOptions) ->
-            record({setopts, Device, NewOptions}),
+            record(Table, {setopts, Device, NewOptions}),
             ok
         end,
         pause_input => fun(Timeout) ->
-            record({pause_input, Timeout}),
+            record(Table, {pause_input, Timeout}),
             {ok, fake_reader}
         end,
         resume_input => fun(Reader, Timeout) ->
-            record({resume_input, Reader, Timeout}),
+            record(Table, {resume_input, Reader, Timeout}),
             ok
         end,
         open_input => fun() ->
-            record(open_input),
+            record(Table, open_input),
             {ok, fake_input}
         end,
-        close_input => fun(InputHandle) ->
-            record({close_input, InputHandle}),
+        close_input => fun(InputHandle, _Timeout) ->
+            record(Table, {close_input, InputHandle}),
             ok
         end,
         write => fun(Device, Data) ->
-            record({write, Device, Data}),
-            case get(write_result) of
+            record(Table, {write, Device, Data}),
+            case probe_value(Table, write_result) of
                 undefined -> ok;
                 WriteResult -> WriteResult
             end
         end,
         read => fun(_InputHandle, Timeout) ->
-            record({read, Timeout}),
-            fake_read()
-        end,
-        now => fun() -> 0 end
+            record(Table, {read, Timeout}),
+            fake_read(Table)
+        end
     }.
 
-fake_read() ->
-    case get(probe_read_result) of
+fake_read(Table) ->
+    case probe_value(Table, probe_read_result) of
         raise ->
             error(injected_read_failure);
         undefined ->
-            case get(probe_input) of
+            case probe_value(Table, probe_input) of
                 <<Byte, Rest/binary>> ->
-                    put(probe_input, Rest),
+                    true = ets:insert(Table, {probe_input, Rest}),
                     {ok, <<Byte>>};
                 <<>> ->
                     {error, nil}
@@ -171,28 +211,32 @@ restored(Events) ->
         lists:last(Events) =:= {setopts, standard_io, OriginalOptions}.
 
 remaining_input() ->
-    get(probe_input).
+    probe_value(probe_table(), probe_input).
 
 reset_probe() ->
-    erase(probe_events),
-    erase(probe_input),
-    erase(probe_read_result),
-    erase(write_result),
+    case erase(probe_table) of
+        undefined -> ok;
+        Table -> ets:delete(Table)
+    end,
     ok.
 
-record(Event) ->
-    Recorded =
-        case get(probe_events) of
-            undefined -> [];
-            Existing -> Existing
-        end,
-    put(probe_events, [Event | Recorded]),
+set_probe(Key, Value) ->
+    true = ets:insert(probe_table(), {Key, Value}),
+    ok.
+
+record(Table, Event) ->
+    Sequence = ets:update_counter(Table, sequence, 1),
+    true = ets:insert(Table, {{event, Sequence}, Event}),
     ok.
 
 events() ->
-    lists:reverse(
-        case get(probe_events) of
-            undefined -> [];
-            Recorded -> Recorded
-        end
-    ).
+    [Event || {{event, _Sequence}, Event} <- ets:tab2list(probe_table())].
+
+probe_table() ->
+    get(probe_table).
+
+probe_value(Table, Key) ->
+    case ets:lookup(Table, Key) of
+        [{Key, Value}] -> Value;
+        [] -> undefined
+    end.

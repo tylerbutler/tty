@@ -11,6 +11,7 @@
 
 -define(OSC_11_QUERY, <<27, "]11;?", 7>>).
 -define(MAX_QUERY_TIMEOUT_MS, 100).
+-define(CLEANUP_BUDGET_MS, 10).
 
 stdin_is_tty()  -> tty_option_enabled(standard_io, stdin).
 stdout_is_tty() -> tty_option_enabled(standard_io, stdout).
@@ -60,26 +61,29 @@ query_background(Stream, TimeoutMs) ->
 %% module's real terminal operations.
 query_background_with_ops(Stream, TimeoutMs, Ops) ->
     try
-        query_background_with_ops_1(Stream, bounded_timeout(TimeoutMs), Ops)
+        Timeout = bounded_timeout(TimeoutMs),
+        Deadline = now_ms() + Timeout,
+        WorkDeadline = max(now_ms(), Deadline - ?CLEANUP_BUDGET_MS),
+        query_background_with_ops_1(Stream, Timeout, WorkDeadline, Deadline, Ops)
     catch
         _:_ ->
             {error, nil}
     end.
 
-query_background_with_ops_1(_Stream, 0, _Ops) ->
+query_background_with_ops_1(_Stream, 0, _WorkDeadline, _Deadline, _Ops) ->
     {error, nil};
-query_background_with_ops_1(Stream, TimeoutMs, Ops) ->
+query_background_with_ops_1(Stream, _TimeoutMs, WorkDeadline, Deadline, Ops) ->
     case stream_target(Stream) of
         {ok, TtyKey, OutputDevice} ->
-            Getopts = maps:get(getopts, Ops),
-            case Getopts(standard_io) of
-                Options when is_list(Options) ->
+            case run_op(getopts, [standard_io], WorkDeadline, Ops) of
+                {ok, Options} when is_list(Options) ->
                     case option_enabled(Options, TtyKey) of
                         true ->
                             query_with_terminal_options(
                                 OutputDevice,
-                                TimeoutMs,
                                 restorable_options(Options),
+                                WorkDeadline,
+                                Deadline,
                                 Ops
                             );
                         false ->
@@ -92,63 +96,72 @@ query_background_with_ops_1(Stream, TimeoutMs, Ops) ->
             {error, nil}
     end.
 
-query_with_terminal_options(OutputDevice, TimeoutMs, OriginalOptions, Ops) ->
-    Setopts = maps:get(setopts, Ops),
+query_with_terminal_options(OutputDevice, OriginalOptions, WorkDeadline, Deadline, Ops) ->
     try
-        case Setopts(standard_io, [binary, {encoding, latin1}, {echo, false}]) of
-            ok ->
-                query_with_input(OutputDevice, TimeoutMs, Ops);
+        case run_op(
+            setopts,
+            [standard_io, [binary, {encoding, latin1}, {echo, false}]],
+            WorkDeadline,
+            Ops
+        ) of
+            {ok, ok} ->
+                query_with_input(OutputDevice, WorkDeadline, Deadline, Ops);
             _ ->
                 {error, nil}
         end
     after
-        restore_options(Setopts, OriginalOptions)
+        restore_options(OriginalOptions, Deadline, Ops)
     end.
 
-query_with_input(OutputDevice, TimeoutMs, Ops) ->
-    PauseInput = maps:get(pause_input, Ops),
-    ResumeInput = maps:get(resume_input, Ops),
-    case PauseInput(TimeoutMs) of
-        {ok, Reader} ->
+query_with_input(OutputDevice, WorkDeadline, Deadline, Ops) ->
+    case run_op(pause_input, [remaining_ms(WorkDeadline)], WorkDeadline, Ops) of
+        {ok, {ok, Reader}} ->
             try
-                query_with_paused_input(OutputDevice, TimeoutMs, Ops)
+                query_with_paused_input(OutputDevice, WorkDeadline, Deadline, Ops)
             after
-                ensure_ok(ResumeInput(Reader, TimeoutMs), input_resume_failed)
+                ensure_op_ok(
+                    resume_input,
+                    [Reader, remaining_ms(Deadline)],
+                    Deadline,
+                    Ops,
+                    input_resume_failed
+                )
             end;
         _ ->
             {error, nil}
     end.
 
-query_with_paused_input(OutputDevice, TimeoutMs, Ops) ->
-    OpenInput = maps:get(open_input, Ops),
-    CloseInput = maps:get(close_input, Ops),
-    case OpenInput() of
-        {ok, Input} ->
+query_with_paused_input(OutputDevice, WorkDeadline, Deadline, Ops) ->
+    case run_op(open_input, [], WorkDeadline, Ops) of
+        {ok, {ok, Input}} ->
             try
-                Write = maps:get(write, Ops),
-                case Write(OutputDevice, ?OSC_11_QUERY) of
-                    ok ->
-                        Now = maps:get(now, Ops),
-                        Deadline = Now() + TimeoutMs,
-                        read_response(Input, Deadline, Now, maps:get(read, Ops), <<>>, false);
+                case run_op(write, [OutputDevice, ?OSC_11_QUERY], WorkDeadline, Ops) of
+                    {ok, ok} ->
+                        read_response(Input, WorkDeadline, Ops, <<>>, false);
                     _ ->
                         {error, nil}
                 end
             after
-                _ = CloseInput(Input)
+                ensure_op_ok(
+                    close_input,
+                    [Input, remaining_ms(Deadline)],
+                    Deadline,
+                    Ops,
+                    input_close_failed
+                )
             end;
         _ ->
             {error, nil}
     end.
 
-read_response(Input, Deadline, Now, Read, Acc, PreviousWasEsc) ->
-    Remaining = Deadline - Now(),
+read_response(Input, Deadline, Ops, Acc, PreviousWasEsc) ->
+    Remaining = remaining_ms(Deadline),
     case Remaining > 0 of
         false ->
             {error, nil};
         true ->
-            case Read(Input, Remaining) of
-                {ok, <<Byte>>} ->
+            case run_op(read, [Input, Remaining], Deadline, Ops) of
+                {ok, {ok, <<Byte>>}} ->
                     Response = <<Acc/binary, Byte>>,
                     case Byte =:= 7 orelse (PreviousWasEsc andalso Byte =:= $\\) of
                         true ->
@@ -157,8 +170,7 @@ read_response(Input, Deadline, Now, Read, Acc, PreviousWasEsc) ->
                             read_response(
                                 Input,
                                 Deadline,
-                                Now,
-                                Read,
+                                Ops,
                                 Response,
                                 Byte =:= 27
                             )
@@ -192,11 +204,64 @@ restorable_options(Options) ->
         Options
     ).
 
-restore_options(Setopts, OriginalOptions) ->
-    ensure_ok(Setopts(standard_io, OriginalOptions), terminal_restore_failed).
+restore_options(OriginalOptions, Deadline, Ops) ->
+    ensure_op_ok(
+        setopts,
+        [standard_io, OriginalOptions],
+        Deadline,
+        Ops,
+        terminal_restore_failed
+    ).
 
-ensure_ok(ok, _Failure) -> ok;
-ensure_ok(_, Failure) -> error(Failure).
+ensure_op_ok(Key, Args, Deadline, Ops, Failure) ->
+    case run_op(Key, Args, Deadline, Ops) of
+        {ok, ok} -> ok;
+        _ -> error(Failure)
+    end.
+
+run_op(Key, Args, Deadline, Ops) ->
+    case remaining_ms(Deadline) of
+        0 ->
+            {error, timeout};
+        Remaining ->
+            Fun = maps:get(Key, Ops),
+            ReplyAlias = erlang:alias(),
+            {Worker, Monitor} =
+                spawn_monitor(fun() ->
+                    Result =
+                        try
+                            {ok, erlang:apply(Fun, Args)}
+                        catch
+                            _:_ -> {error, operation_failed}
+                        end,
+                    ReplyAlias ! {ReplyAlias, Result}
+                end),
+            receive
+                {ReplyAlias, Result} ->
+                    erlang:unalias(ReplyAlias),
+                    erlang:demonitor(Monitor, [flush]),
+                    Result;
+                {'DOWN', Monitor, process, Worker, _Reason} ->
+                    erlang:unalias(ReplyAlias),
+                    {error, operation_failed}
+            after Remaining ->
+                erlang:unalias(ReplyAlias),
+                exit(Worker, kill),
+                erlang:demonitor(Monitor, [flush]),
+                receive
+                    {'DOWN', Monitor, process, Worker, _Reason} -> ok
+                after 0 ->
+                    ok
+                end,
+                {error, timeout}
+            end
+    end.
+
+remaining_ms(Deadline) ->
+    max(0, Deadline - now_ms()).
+
+now_ms() ->
+    erlang:monotonic_time(millisecond).
 
 default_query_ops() ->
     #{
@@ -205,66 +270,95 @@ default_query_ops() ->
         pause_input => fun pause_tty_reader/1,
         resume_input => fun resume_tty_reader/2,
         open_input => fun open_tty_input/0,
-        close_input => fun file:close/1,
+        close_input => fun close_tty_input/2,
         write => fun io:put_chars/2,
-        read => fun read_tty_byte/2,
-        now => fun() -> erlang:monotonic_time(millisecond) end
+        read => fun read_tty_byte/2
     }.
 
 open_tty_input() ->
     case os:type() of
         {unix, _} ->
-            file:open("/dev/tty", [read, raw, binary]);
+            Parent = self(),
+            Ref = make_ref(),
+            _Owner = spawn_link(fun() ->
+                case file:open("/dev/tty", [read, raw, binary]) of
+                    {ok, Input} ->
+                        Parent ! {Ref, {ok, self()}},
+                        tty_input_loop(Input);
+                    Error ->
+                        Parent ! {Ref, Error}
+                end
+            end),
+            receive
+                {Ref, Result} -> Result
+            end;
         _ ->
             {error, enotsup}
     end.
 
-pause_tty_reader(_TimeoutMs) ->
-    case whereis(user_drv_reader) of
-        Reader when is_pid(Reader) ->
-            try erlang:suspend_process(Reader, [unless_suspending]) of
-                true -> {ok, Reader};
-                false -> {error, busy}
-            catch
-                _:_ -> {error, terminated}
-            end;
-        undefined ->
-            {error, enotsup}
+tty_input_loop(Input) ->
+    receive
+        {read, ReplyAlias} ->
+            ReplyAlias ! {ReplyAlias, file:read(Input, 1)},
+            tty_input_loop(Input);
+        {close, ReplyAlias} ->
+            ReplyAlias ! {ReplyAlias, file:close(Input)}
     end.
 
-resume_tty_reader(Reader, _TimeoutMs) ->
-    try erlang:resume_process(Reader) of
-        true -> ok
-    catch
-        _:_ -> {error, terminated}
+close_tty_input(Input, TimeoutMs) ->
+    call_tty_input(Input, close, max(0, TimeoutMs - 1)).
+
+pause_tty_reader(TimeoutMs) ->
+    case whereis(user_drv_reader) of
+        Reader when is_pid(Reader) ->
+            case call_tty_reader(Reader, disable, TimeoutMs) of
+                ok -> {ok, Reader};
+                Error -> Error
+            end;
+        undefined ->
+            {ok, none}
+    end.
+
+resume_tty_reader(none, _TimeoutMs) ->
+    ok;
+resume_tty_reader(Reader, TimeoutMs) ->
+    call_tty_reader(Reader, enable, TimeoutMs).
+
+call_tty_reader(Reader, Request, TimeoutMs) ->
+    ReplyAlias = erlang:monitor(process, Reader, [{alias, reply_demonitor}]),
+    Reader ! {ReplyAlias, Request},
+    receive
+        {ReplyAlias, Reply} ->
+            Reply;
+        {'DOWN', ReplyAlias, process, Reader, _Reason} ->
+            {error, terminated}
+    after TimeoutMs ->
+        erlang:demonitor(ReplyAlias, [flush]),
+        RecoveryAlias = erlang:alias(),
+        Reader ! {RecoveryAlias, enable},
+        erlang:unalias(RecoveryAlias),
+        {error, timeout}
     end.
 
 read_tty_byte(Input, TimeoutMs) ->
-    ReplyAlias = erlang:alias(),
-    {Reader, Monitor} =
-        spawn_monitor(fun() ->
-            ReplyAlias ! {ReplyAlias, file:read(Input, 1)}
-        end),
-    receive
-        {ReplyAlias, Result} ->
-            erlang:unalias(ReplyAlias),
-            erlang:demonitor(Monitor, [flush]),
-            normalize_byte_read(Result);
-        {'DOWN', Monitor, process, Reader, _Reason} ->
-            erlang:unalias(ReplyAlias),
-            {error, nil}
-    after TimeoutMs ->
-        erlang:unalias(ReplyAlias),
-        _ = file:close(Input),
-        exit(Reader, kill),
-        erlang:demonitor(Monitor, [flush]),
-        {error, nil}
+    case call_tty_input(Input, read, max(0, TimeoutMs - 1)) of
+        {ok, <<Byte>>} -> {ok, <<Byte>>};
+        _ -> {error, nil}
     end.
 
-normalize_byte_read({ok, <<Byte>>}) ->
-    {ok, <<Byte>>};
-normalize_byte_read(_) ->
-    {error, nil}.
+call_tty_input(Input, Request, TimeoutMs) ->
+    ReplyAlias = erlang:monitor(process, Input, [{alias, reply_demonitor}]),
+    Input ! {Request, ReplyAlias},
+    receive
+        {ReplyAlias, Result} ->
+            Result;
+        {'DOWN', ReplyAlias, process, Input, _Reason} ->
+            {error, closed}
+    after TimeoutMs ->
+        erlang:demonitor(ReplyAlias, [flush]),
+        exit(Input, kill),
+        {error, timeout}
+    end.
 
 %% Returns {ok, Value} | {error, nil} to match Gleam's Result(String, Nil).
 get_env(Name) when is_binary(Name) ->
