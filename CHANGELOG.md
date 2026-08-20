@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.2.0 - 2026-08-20
+
+
+### Added
+
+- A strict, target-independent OSC 11 response resolver for opt-in terminal background queries. It accepts exact BEL- or ST-terminated replies with uniform 8-bit or 16-bit RGB channels, classifies them by perceived luminance, and safely returns Unknown for non-TTY streams, query errors, and malformed responses.
+
+### Fixed
+
+- JavaScript support metadata now correctly reports `detect_color_level` and
+`detect_background` as runnable on JavaScript. Their JavaScript environment
+lookup FFI now returns a typed `Result` directly instead of using a
+target-gated `Dynamic` bridge that the Gleam docs analyzer misclassified.
+
 ## v1.1.1 - 2026-06-18
 
 

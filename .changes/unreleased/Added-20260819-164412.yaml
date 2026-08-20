@@ -1,3 +1,0 @@
-kind: Added
-body: A strict, target-independent OSC 11 response resolver for opt-in terminal background queries. It accepts exact BEL- or ST-terminated replies with uniform 8-bit or 16-bit RGB channels, classifies them by perceived luminance, and safely returns Unknown for non-TTY streams, query errors, and malformed responses.
-time: 2026-08-19T16:44:12.605493-07:00
