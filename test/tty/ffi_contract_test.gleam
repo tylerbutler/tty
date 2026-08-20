@@ -30,8 +30,8 @@ fn osc_failures_and_exception_restore() -> Bool
 fn osc_whole_call_timeout_is_bounded() -> Bool
 
 @target(erlang)
-@external(erlang, "tty_ffi_contract_probe", "osc_real_tty_reaches_io_path")
-fn osc_real_tty_reaches_io_path() -> Bool
+@external(erlang, "tty_ffi_contract_probe", "osc_real_tty_handles_bare_reply")
+fn osc_real_tty_handles_bare_reply() -> Bool
 
 @target(erlang)
 pub fn invalid_env_name_returns_error_test() {
@@ -76,8 +76,8 @@ pub fn osc_whole_call_timeout_is_bounded_test() {
 }
 
 @target(erlang)
-pub fn osc_real_tty_reaches_io_path_test() {
-  osc_real_tty_reaches_io_path()
+pub fn osc_real_tty_handles_bare_reply_test() {
+  osc_real_tty_handles_bare_reply()
   |> expect.to_be_true
 }
 

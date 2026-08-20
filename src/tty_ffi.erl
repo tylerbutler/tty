@@ -11,7 +11,9 @@
 
 -define(OSC_11_QUERY, <<27, "]11;?", 7>>).
 -define(MAX_QUERY_TIMEOUT_MS, 100).
--define(CLEANUP_BUDGET_MS, 10).
+-define(CLEANUP_BUDGET_MS, 25).
+-define(RAW_MODE_READY, <<30, "tty_ffi_raw", 31>>).
+-define(RAW_MODE_RESTORED, <<30, "tty_ffi_restored", 31>>).
 
 stdin_is_tty()  -> tty_option_enabled(standard_io, stdin).
 stdout_is_tty() -> tty_option_enabled(standard_io, stdout).
@@ -97,6 +99,29 @@ query_background_with_ops_1(Stream, _TimeoutMs, WorkDeadline, Deadline, Ops) ->
     end.
 
 query_with_terminal_options(OutputDevice, OriginalOptions, WorkDeadline, Deadline, Ops) ->
+    case run_op(get_terminal_mode, [self()], WorkDeadline, Ops) of
+        {ok, {ok, TerminalMode}} ->
+            try
+                case run_op(set_terminal_raw, [TerminalMode], WorkDeadline, Ops) of
+                    {ok, ok} ->
+                        query_with_erlang_options(
+                            OutputDevice,
+                            OriginalOptions,
+                            WorkDeadline,
+                            Deadline,
+                            Ops
+                        );
+                    _ ->
+                        {error, nil}
+                end
+            after
+                restore_terminal_mode(TerminalMode, Deadline, Ops)
+            end;
+        _ ->
+            {error, nil}
+    end.
+
+query_with_erlang_options(OutputDevice, OriginalOptions, WorkDeadline, Deadline, Ops) ->
     try
         case run_op(
             setopts,
@@ -213,6 +238,15 @@ restore_options(OriginalOptions, Deadline, Ops) ->
         terminal_restore_failed
     ).
 
+restore_terminal_mode(TerminalMode, Deadline, Ops) ->
+    ensure_op_ok(
+        restore_terminal_mode,
+        [TerminalMode],
+        Deadline,
+        Ops,
+        terminal_mode_restore_failed
+    ).
+
 ensure_op_ok(Key, Args, Deadline, Ops, Failure) ->
     case run_op(Key, Args, Deadline, Ops) of
         {ok, ok} -> ok;
@@ -267,6 +301,9 @@ default_query_ops() ->
     #{
         getopts => fun io:getopts/1,
         setopts => fun io:setopts/2,
+        get_terminal_mode => fun get_terminal_mode/1,
+        set_terminal_raw => fun set_terminal_raw/1,
+        restore_terminal_mode => fun restore_terminal_mode/1,
         pause_input => fun pause_tty_reader/1,
         resume_input => fun resume_tty_reader/2,
         open_input => fun open_tty_input/0,
@@ -274,6 +311,133 @@ default_query_ops() ->
         write => fun io:put_chars/2,
         read => fun read_tty_byte/2
     }.
+
+get_terminal_mode(QueryProcess) ->
+    case {os:type(), os:find_executable("sh")} of
+        {{unix, _}, Shell} when is_list(Shell) ->
+            Parent = self(),
+            Ref = make_ref(),
+            _Owner = spawn_link(fun() ->
+                start_terminal_mode_owner(Parent, Ref, QueryProcess, Shell)
+            end),
+            receive
+                {Ref, Result} -> Result
+            end;
+        _ ->
+            {error, enotsup}
+    end.
+
+start_terminal_mode_owner(Parent, Ref, QueryProcess, Shell) ->
+    process_flag(trap_exit, true),
+    QueryMonitor = erlang:monitor(process, QueryProcess),
+    %% OTP port children have no controlling terminal, so resolve the BEAM's
+    %% concrete PTY and keep one helper alive until its exact mode is restored.
+    Script =
+        "pid=$1; name=$(ps -o tty= -p \"$pid\" 2>/dev/null); "
+        "set -- $name; name=${1-}; "
+        "case \"$name\" in ''|/*|*..*|*[!A-Za-z0-9/_-]*) exit 1;; esac; "
+        "device=/dev/$name; mode=$(stty -g raw -echo < \"$device\") || exit 1; "
+        "restore() { stty \"$mode\" < \"$device\" >/dev/null 2>&1; }; "
+        "trap restore EXIT HUP INT TERM; "
+        "printf '\\036tty_ffi_raw\\037'; "
+        "IFS= read -r _; "
+        "trap - EXIT HUP INT TERM; "
+        "stty \"$mode\" < \"$device\" || exit 1; "
+        "printf '\\036tty_ffi_restored\\037'",
+    Port = open_port(
+        {spawn_executable, Shell},
+        [
+            binary,
+            exit_status,
+            use_stdio,
+            stderr_to_stdout,
+            {args, ["-c", Script, "--", os:getpid()]}
+        ]
+    ),
+    case wait_for_port_marker(Port, ?RAW_MODE_READY, <<>>, Parent) of
+        {ok, _Output} ->
+            Parent ! {Ref, {ok, self()}},
+            terminal_mode_owner_loop(Port, QueryMonitor, Parent);
+        abandoned ->
+            ok;
+        error ->
+            Parent ! {Ref, {error, terminal_raw_mode_failed}}
+    end.
+
+set_terminal_raw(Owner) when is_pid(Owner) ->
+    %% The owner reports ready only after its helper has entered raw mode.
+    case erlang:is_process_alive(Owner) of
+        true -> ok;
+        false -> {error, terminal_mode_owner_stopped}
+    end.
+
+restore_terminal_mode(Owner) ->
+    ReplyAlias = erlang:monitor(process, Owner, [{alias, reply_demonitor}]),
+    Owner ! {restore, ReplyAlias},
+    receive
+        {ReplyAlias, Result} ->
+            Result;
+        {'DOWN', ReplyAlias, process, Owner, _Reason} ->
+            {error, terminal_mode_owner_stopped}
+    end.
+
+terminal_mode_owner_loop(Port, QueryMonitor, Parent) ->
+    receive
+        {restore, ReplyAlias} ->
+            true = erlang:port_command(Port, <<"restore\n">>),
+            Result =
+                case wait_for_port_marker(Port, ?RAW_MODE_RESTORED, <<>>, Parent) of
+                    {ok, _Output} -> wait_for_port_exit(Port);
+                    abandoned -> {error, terminal_restore_abandoned};
+                    error -> {error, terminal_restore_failed}
+                end,
+            erlang:demonitor(QueryMonitor, [flush]),
+            ReplyAlias ! {ReplyAlias, Result};
+        {'DOWN', QueryMonitor, process, _QueryProcess, _Reason} ->
+            true = erlang:port_command(Port, <<"restore\n">>),
+            _ = wait_for_port_exit(Port),
+            ok;
+        {'EXIT', Parent, normal} ->
+            terminal_mode_owner_loop(Port, QueryMonitor, Parent);
+        {'EXIT', Parent, _Reason} ->
+            true = erlang:port_command(Port, <<"restore\n">>),
+            _ = wait_for_port_exit(Port),
+            ok;
+        {'EXIT', Port, _Reason} ->
+            ok;
+        {Port, {exit_status, _Status}} ->
+            ok
+    end.
+
+wait_for_port_marker(Port, Marker, Acc, Parent) ->
+    case binary:match(Acc, Marker) of
+        {_, _} ->
+            {ok, Acc};
+        nomatch ->
+            receive
+                {Port, {data, Data}} ->
+                    wait_for_port_marker(Port, Marker, <<Acc/binary, Data/binary>>, Parent);
+                {Port, {exit_status, _Status}} ->
+                    error;
+                {'EXIT', Port, _Reason} ->
+                    error;
+                {'EXIT', Parent, normal} ->
+                    wait_for_port_marker(Port, Marker, Acc, Parent);
+                {'EXIT', Parent, _Reason} ->
+                    true = erlang:port_command(Port, <<"restore\n">>),
+                    _ = wait_for_port_exit(Port),
+                    abandoned
+            end
+    end.
+
+wait_for_port_exit(Port) ->
+    receive
+        {Port, {exit_status, 0}} -> ok;
+        {Port, {exit_status, _Status}} -> {error, terminal_helper_failed};
+        {Port, {data, _Data}} -> wait_for_port_exit(Port);
+        {'EXIT', Port, normal} -> wait_for_port_exit(Port);
+        {'EXIT', Port, _Reason} -> {error, terminal_helper_failed}
+    end.
 
 open_tty_input() ->
     case os:type() of
