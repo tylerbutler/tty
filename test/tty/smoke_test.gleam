@@ -39,3 +39,18 @@ pub fn detect_background_returns_a_background_test() {
     Light | Dark | Unknown -> expect.to_be_true(True)
   }
 }
+
+pub fn query_background_returns_a_background_test() {
+  case tty.query_background(Stdout) {
+    Light | Dark | Unknown -> expect.to_be_true(True)
+  }
+}
+
+pub fn non_tty_query_returns_unknown_test() {
+  case tty.is_tty(Stdin) {
+    False ->
+      tty.query_background(Stdin)
+      |> expect.to_equal(Unknown)
+    True -> expect.to_be_true(True)
+  }
+}

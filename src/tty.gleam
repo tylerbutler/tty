@@ -1,13 +1,24 @@
 //// TTY and ANSI color-support detection.
 ////
-//// This module answers two questions a CLI program asks at startup:
+//// This module answers three questions a CLI program asks at startup:
 //// 1. Is this stream connected to a terminal? (`is_tty`)
 //// 2. What level of ANSI color does it support? (`detect_color_level`)
+//// 3. Is its background light or dark? (`detect_background` and the opt-in
+////    `query_background`)
 
+@target(javascript)
+import gleam/dynamic.{type Dynamic}
+@target(javascript)
+import gleam/dynamic/decode
 import gleam/int
+@target(javascript)
+import gleam/option.{None, Some}
 import gleam/order
 import tty/resolve_background as background_resolver
 import tty/resolve_color_level as resolver
+import tty/resolve_query_background as query_background_resolver
+
+const background_query_timeout_ms = 100
 
 /// The standard I/O streams of the running process.
 /// This variant set is intentionally stable for 1.x.
@@ -213,6 +224,39 @@ pub fn detect_background(_stream: Stream) -> Background {
   background
 }
 
+/// Actively queries a terminal for its background color using OSC 11.
+///
+/// Unlike `detect_background`, this function is impure and opt-in: it writes a
+/// query to the selected terminal stream and briefly reads from the terminal in
+/// raw mode. The query uses a fixed 100 ms timeout and always restores terminal
+/// state before returning.
+///
+/// Returns `Unknown` immediately when `stream` is not a TTY. It also returns
+/// `Unknown` when the runtime does not support a safe bounded query, the
+/// terminal does not respond before the timeout, or the response is malformed.
+///
+/// ```gleam
+/// case tty.query_background(Stdout) {
+///   Light -> render_for_light_background()
+///   Dark -> render_for_dark_background()
+///   Unknown -> render_default_theme()
+/// }
+/// ```
+pub fn query_background(stream: Stream) -> Background {
+  let rank =
+    query_background_resolver.resolve_query_background(
+      is_tty: is_tty(stream),
+      query: fn() {
+        query_background_response(stream, background_query_timeout_ms)
+      },
+    )
+
+  case background_from_rank(rank) {
+    Ok(background) -> background
+    Error(Nil) -> Unknown
+  }
+}
+
 @external(erlang, "tty_ffi", "stdin_is_tty")
 @external(javascript, "./tty_ffi.mjs", "stdinIsTty")
 fn stdin_is_tty() -> Bool
@@ -228,3 +272,36 @@ fn stderr_is_tty() -> Bool
 @external(erlang, "tty_ffi", "get_env")
 @external(javascript, "./tty_ffi.mjs", "getEnv")
 fn get_env(name: String) -> Result(String, Nil)
+
+@target(erlang)
+@external(erlang, "tty_ffi", "query_background")
+fn query_background_response(
+  stream: Stream,
+  timeout_ms: Int,
+) -> Result(String, Nil)
+
+@target(javascript)
+fn query_background_response(
+  stream: Stream,
+  timeout_ms: Int,
+) -> Result(String, Nil) {
+  let stream_name = case stream {
+    Stdin -> "stdin"
+    Stdout -> "stdout"
+    Stderr -> "stderr"
+  }
+
+  case
+    decode.run(
+      query_background_javascript(stream_name, timeout_ms),
+      decode.optional(decode.string),
+    )
+  {
+    Ok(Some(response)) -> Ok(response)
+    Ok(None) | Error(_) -> Error(Nil)
+  }
+}
+
+@target(javascript)
+@external(javascript, "./tty_ffi.mjs", "queryOsc11")
+fn query_background_javascript(stream_name: String, timeout_ms: Int) -> Dynamic
