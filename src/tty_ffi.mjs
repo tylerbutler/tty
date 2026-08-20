@@ -16,7 +16,8 @@ function streamIsTty(name) {
 
 const OSC_11_QUERY = "\x1b]11;?\x07";
 const MAX_OSC_RESPONSE_LENGTH = 4096;
-const MAX_OSC_TIMEOUT_MS = 1000;
+const MAX_OSC_TIMEOUT_MS = 100;
+const MAX_STALLED_CLOCK_READS = 10_000;
 
 function isSupportedNode() {
   if (!hasProcess() || typeof process.versions?.node !== "string") return false;
@@ -67,24 +68,20 @@ export function getEnv(name) {
     : new GleamError(undefined);
 }
 
-// Runs synchronously so the caller never regains control while raw mode is
-// active. A paused Node Readable's read() is nonblocking; hosts without that
-// bounded path are rejected before terminal state is changed.
-export function queryOsc11(streamName, timeoutMs) {
-  const clock = globalThis.performance;
+function queryOsc11WithProcess(streamName, timeoutMs) {
   if (
     !isSupportedNode() ||
     !["stdin", "stdout", "stderr"].includes(streamName) ||
-    !Number.isFinite(timeoutMs) ||
-    timeoutMs < 0 ||
-    timeoutMs > MAX_OSC_TIMEOUT_MS ||
-    typeof clock?.now !== "function"
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > MAX_OSC_TIMEOUT_MS
   ) {
     return undefined;
   }
 
   const stdin = process.stdin;
   const output = process[streamName];
+  const clock = process.hrtime;
   if (
     !stdin ||
     !output ||
@@ -93,25 +90,36 @@ export function queryOsc11(streamName, timeoutMs) {
     typeof stdin.isRaw !== "boolean" ||
     typeof stdin.setRawMode !== "function" ||
     typeof stdin.read !== "function" ||
-    (stdin.readableFlowing !== false && stdin.readableFlowing !== null) ||
-    typeof output.write !== "function"
+    stdin.readableFlowing !== false ||
+    typeof output.write !== "function" ||
+    typeof clock?.bigint !== "function"
   ) {
     return undefined;
   }
 
-  const startedAt = clock.now();
-  if (!Number.isFinite(startedAt)) return undefined;
+  const startedAt = clock.bigint();
+  if (typeof startedAt !== "bigint") return undefined;
 
   const previousRawMode = stdin.isRaw;
   let response;
 
   try {
     stdin.setRawMode(true);
-    if (output.write(OSC_11_QUERY) === false) return undefined;
+    if (output.write(OSC_11_QUERY) !== true) return undefined;
 
-    const deadline = startedAt + timeoutMs;
+    const deadline = startedAt + BigInt(timeoutMs) * 1_000_000n;
+    let previousNow = startedAt;
+    let stalledClockReads = 0;
     let raw = "";
-    while (clock.now() < deadline) {
+    while (true) {
+      const now = clock.bigint();
+      if (typeof now !== "bigint" || now < previousNow) return undefined;
+      if (now >= deadline) break;
+
+      stalledClockReads = now === previousNow ? stalledClockReads + 1 : 0;
+      if (stalledClockReads > MAX_STALLED_CLOCK_READS) return undefined;
+      previousNow = now;
+
       const chunk = stdin.read();
       if (chunk !== null && chunk !== undefined) {
         const text = chunkToString(chunk);
@@ -138,4 +146,15 @@ export function queryOsc11(streamName, timeoutMs) {
   }
 
   return response;
+}
+
+// Runs synchronously so the caller never regains control while raw mode is
+// active. A paused Node Readable's read() is nonblocking; hosts without that
+// bounded path are rejected before terminal state is changed.
+export function queryOsc11(streamName, timeoutMs) {
+  try {
+    return queryOsc11WithProcess(streamName, timeoutMs);
+  } catch {
+    return undefined;
+  }
 }
