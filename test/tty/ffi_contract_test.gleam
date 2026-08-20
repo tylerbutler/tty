@@ -1,4 +1,3 @@
-@target(erlang)
 import startest/expect
 
 @target(erlang)
@@ -8,6 +7,18 @@ fn invalid_env_name_returns_error() -> Bool
 @target(erlang)
 @external(erlang, "tty_ffi_contract_probe", "invalid_env_value_returns_error")
 fn invalid_env_value_returns_error() -> Bool
+
+@target(javascript)
+@external(javascript, "./osc_transport_probe_ffi.mjs", "rejectsUnsupportedTransportsWithoutMutation")
+fn rejects_unsupported_transports_without_mutation() -> Bool
+
+@target(javascript)
+@external(javascript, "./osc_transport_probe_ffi.mjs", "readsTerminatedResponsesAndRestoresMode")
+fn reads_terminated_responses_and_restores_mode() -> Bool
+
+@target(javascript)
+@external(javascript, "./osc_transport_probe_ffi.mjs", "restoresModeOnEveryFailure")
+fn restores_mode_on_every_failure() -> Bool
 
 @target(erlang)
 @external(erlang, "tty_ffi_contract_probe", "osc_non_tty_has_no_side_effects")
@@ -62,6 +73,19 @@ pub fn osc_failures_and_exception_restore_test() {
 }
 
 @target(javascript)
-pub fn erlang_ffi_contract_tests_are_not_available() -> Nil {
-  Nil
+pub fn unsupported_js_osc_transports_do_not_mutate_terminal_test() {
+  rejects_unsupported_transports_without_mutation()
+  |> expect.to_be_true
+}
+
+@target(javascript)
+pub fn js_osc_transport_reads_to_terminator_and_restores_mode_test() {
+  reads_terminated_responses_and_restores_mode()
+  |> expect.to_be_true
+}
+
+@target(javascript)
+pub fn js_osc_transport_restores_mode_on_failure_test() {
+  restores_mode_on_every_failure()
+  |> expect.to_be_true
 }
