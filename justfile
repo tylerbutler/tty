@@ -7,6 +7,7 @@ alias f := format
 alias l := lint
 alias c := clean
 alias cl := change
+alias changelog := changelog-preview
 
 # Default recipe
 default:
@@ -64,16 +65,17 @@ docs:
 # === CHANGELOG ===
 
 # Create a new changelog entry
-change:
-    changie new
+[positional-arguments]
+change kind body:
+    trellis changelog new --kind "$1" --body "$2"
 
-# Preview unreleased changelog
+# Preview unreleased version bumps without changing files
 changelog-preview:
-    changie batch auto --dry-run
+    trellis version plan
 
-# Generate CHANGELOG.md
-changelog:
-    changie merge
+# Validate release configuration and changelog fragments
+release-check:
+    trellis doctor
 
 # === MAINTENANCE ===
 
@@ -84,6 +86,6 @@ clean:
 # === CI ===
 
 # Full validation workflow (no file mutation)
-ci: lint check build-strict test docs
+ci: lint check build-strict test docs release-check
 
 alias pr := ci

@@ -18,6 +18,14 @@ jobs:
       - name: Setup environment
         uses: ./.github/actions/setup
 
+      - name: Setup Trellis
+        uses: tylerbutler/actions/setup-trellis@40269ed66210884257a06ab9c0f7e2c4f987af05 # ratchet:tylerbutler/actions/setup-trellis@main
+        with:
+          version: "1.3.0"
+
+      - name: Check release configuration
+        run: just release-check
+
       - name: Lint (formatting + glinter)
         run: just lint
 
