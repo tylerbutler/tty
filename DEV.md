@@ -27,6 +27,11 @@ supports Ubuntu 26.04.
 - `just release-check` — check release configuration and fragments
 - `just ci` — run the full validation workflow
 
+## Dependency updates
+
+Run `gleam deps outdated` to check for updates and `gleam deps update` to
+update the lockfile. Then run `just ci`.
+
 ## Tests
 
 Unitest discovers public zero-argument functions whose names end in `_test`.

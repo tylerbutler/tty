@@ -20,7 +20,7 @@ gleam_stdlib = ">= 0.40.0 and < 2.0.0"
 
 [dev-dependencies]
 unitest = ">= 1.6.1 and < 2.0.0"
-glinter = ">= 2.19.0 and < 3.0.0"
+glinter = ">= 2.19.2 and < 3.0.0"
 
 [tools.licence_audit]
 allow = ["Apache-2.0", "MIT"]
