@@ -3,49 +3,43 @@ name: Release
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      pre:
+        description: "Candidate label (rc), none for stable promotion, or empty for stable defaults"
+        type: string
+        default: ""
+      set:
+        description: "Exact package=version targets, one per line (for example tty=1.2.0)"
+        type: string
+        default: ""
+      bump:
+        description: "Bump overrides, one per line (for example tty=minor)"
+        type: string
+        default: ""
 
 permissions:
   contents: write
-  pull-requests: write
+  pull-requests: read
+  statuses: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-
-      - name: Generate app token
-        id: app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # ratchet:actions/create-github-app-token@v3.3.0
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
-      - uses: tylerbutler/actions/changie-release@ee7def5950abcf0a519add705a95719ab345c05e # ratchet:tylerbutler/actions/changie-release@v1
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          pr-title-template: "chore: release {version}"
-          version-files: |
-            gleam.toml:version
-
-      - name: Summary
-        if: steps.release.outputs.skipped != 'true'
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-          PR_URL: ${{ steps.release.outputs.pr-url }}
-          PR_OP: ${{ steps.release.outputs.pr-operation }}
-        run: |
-          echo "### Release PR Created" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Version:** $VERSION" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **PR:** $PR_URL" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Operation:** $PR_OP" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Skipped
-        if: steps.release.outputs.skipped == 'true'
-        run: |
-          echo "### Release Skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "No unreleased change fragments found." >> "$GITHUB_STEP_SUMMARY"
+    uses: tylerbutler/actions/.github/workflows/trellis-release.yml@40269ed66210884257a06ab9c0f7e2c4f987af05 # ratchet:tylerbutler/actions/.github/workflows/trellis-release.yml@main
+    with:
+      trellis_version: "1.3.0"
+      release_mode: hex
+      base: main
+      release_branch: release/pending
+      gleam_version: "1.16.0"
+      erlang_version: "27.2.1"
+      pre: ${{ inputs.pre || '' }}
+      set: ${{ inputs.set || '' }}
+      bump: ${{ inputs.bump || '' }}
+    secrets:
+      app_id: ${{ secrets.RELEASE_APP_ID }}
+      app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      hex_api_key: ${{ secrets.HEX_API_KEY }}
