@@ -6,6 +6,9 @@
 - Erlang/OTP 26 or newer for the Erlang target
 - Node.js 20 or newer for the JavaScript target
 
+CI and Hex publishing use Ubuntu 24.04 because the pinned BEAM setup action
+does not support Ubuntu 26.04.
+
 ## Common commands
 
 - `just build` — compile the package
@@ -20,10 +23,26 @@
 Run `gleam deps outdated` to check for updates and `gleam deps update` to
 update the lockfile. Then run `just ci`.
 
-Keep `startest` at 0.8.0 or newer. Its `bigben` dependency requires
-`gleam_stdlib` below 1.0.0. A lower test-runner requirement lets the resolver
-downgrade to older dependencies that do not build with stdlib 1.0.
-The public package requirement still permits stdlib 1.0.
+## Tests
+
+Unitest discovers public zero-argument functions whose names end in `_test`.
+Use native Gleam `assert` statements for checks. Keep `@target` annotations on
+target-specific tests.
+
+Tests run sequentially in random order. Unitest reports the seed so you can
+reproduce that order. Pass runner options after `--`:
+
+```sh
+# Run a test file on either target
+gleam test --target erlang -- test/tty/resolve_color_level_test.gleam
+gleam test --target javascript -- test/tty/resolve_color_level_test.gleam
+
+# Run one test
+gleam test --target erlang -- --test tty/resolve_color_level_test.no_color_disables_everything_test
+
+# Reproduce an order using the reported seed
+gleam test --target javascript -- --seed 123
+```
 
 ## Release workflow
 

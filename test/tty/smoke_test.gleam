@@ -1,4 +1,3 @@
-import startest/expect
 import tty.{
   Ansi256, Basic, Dark, Light, NoColor, Stderr, Stdin, Stdout, TrueColor,
   Unknown,
@@ -9,7 +8,7 @@ import tty.{
 
 fn expect_bool(value: Bool) {
   case value {
-    True | False -> expect.to_be_true(True)
+    True | False -> Nil
   }
 }
 
@@ -30,12 +29,12 @@ pub fn is_tty_stderr_returns_bool_test() {
 
 pub fn detect_color_level_returns_a_level_test() {
   case tty.detect_color_level(Stdout) {
-    NoColor | Basic | Ansi256 | TrueColor -> expect.to_be_true(True)
+    NoColor | Basic | Ansi256 | TrueColor -> Nil
   }
 }
 
 pub fn detect_background_returns_a_background_test() {
   case tty.detect_background(Stdout) {
-    Light | Dark | Unknown -> expect.to_be_true(True)
+    Light | Dark | Unknown -> Nil
   }
 }
