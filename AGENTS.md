@@ -13,12 +13,21 @@ Tests run on both targets and should stay green on both:
 - `gleam test --target erlang`
 - `gleam test --target javascript`
 
-Run a single test module:
+Unitest discovers public zero-argument `*_test` functions and runs them
+sequentially in seeded random order. Use native Gleam assertions.
 
-- `gleam test --target erlang tty/resolve_color_level_test`
-- `gleam test --target javascript tty/resolve_color_level_test`
+Run a single test file:
 
-(`tty/smoke_test` and `tty/color_level_helpers_test` can be run the same way.)
+- `gleam test --target erlang -- test/tty/resolve_color_level_test.gleam`
+- `gleam test --target javascript -- test/tty/resolve_color_level_test.gleam`
+
+(`test/tty/smoke_test.gleam` and `test/tty/color_level_helpers_test.gleam`
+can be run the same way.)
+
+Run one test or reproduce an order:
+
+- `gleam test --target erlang -- --test tty/resolve_color_level_test.no_color_disables_everything_test`
+- `gleam test --target javascript -- --seed 123`
 
 ## High-level architecture
 

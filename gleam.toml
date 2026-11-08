@@ -19,7 +19,7 @@ typescript_declarations = true
 gleam_stdlib = ">= 0.40.0 and < 2.0.0"
 
 [dev-dependencies]
-startest = ">= 0.6.0 and < 1.0.0"
+unitest = ">= 1.6.1 and < 2.0.0"
 glinter = ">= 2.19.0 and < 3.0.0"
 
 [tools.licence_audit]
@@ -29,11 +29,11 @@ deny = []
 [tools.glinter]
 include = ["src/", "test/"]
 
-# Test files are exercised by startest, which discovers `*_test` functions by
-# reflection — so they're never imported (unused_exports) and conventionally
-# omit the `-> Nil` return annotation. The exhaustiveness guards in the smoke
-# tests intentionally use single-branch cases and a panic on the impossible
-# branch. None of these are actionable in test code.
+# Test files are exercised by Unitest, which discovers public `*_test` functions
+# from source — so they're never imported (unused_exports) and conventionally
+# omit the `-> Nil` return annotation. Smoke tests intentionally use exhaustive
+# single-branch cases; resolver helpers panic on impossible ranks.
+# None of these are actionable in test code.
 [tools.glinter.ignore]
 "test/**/*.gleam" = [
   "unused_exports",

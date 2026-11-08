@@ -15,6 +15,27 @@
 - `just docs` — build the Hex documentation
 - `just ci` — run the full validation workflow
 
+## Tests
+
+Unitest discovers public zero-argument functions whose names end in `_test`.
+Use native Gleam `assert` statements for checks. Keep `@target` annotations on
+target-specific tests.
+
+Tests run sequentially in random order. Unitest reports the seed so you can
+reproduce that order. Pass runner options after `--`:
+
+```sh
+# Run a test file on either target
+gleam test --target erlang -- test/tty/resolve_color_level_test.gleam
+gleam test --target javascript -- test/tty/resolve_color_level_test.gleam
+
+# Run one test
+gleam test --target erlang -- --test tty/resolve_color_level_test.no_color_disables_everything_test
+
+# Reproduce an order using the reported seed
+gleam test --target javascript -- --seed 123
+```
+
 ## Release workflow
 
 1. Add a changelog fragment under `.changes/unreleased/` using the project’s Changie setup.

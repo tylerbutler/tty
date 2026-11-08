@@ -1,7 +1,4 @@
 @target(javascript)
-import startest/expect
-
-@target(javascript)
 @external(javascript, "./noprocess_probe_ffi.mjs", "degradesWithoutProcess")
 fn degrades_without_process() -> Bool
 
@@ -10,8 +7,7 @@ fn degrades_without_process() -> Bool
 // instead of throwing. This is the main reason the JS FFI guards exist.
 @target(javascript)
 pub fn js_ffi_degrades_when_process_absent_test() {
-  degrades_without_process()
-  |> expect.to_be_true
+  assert degrades_without_process()
 }
 
 @target(erlang)
