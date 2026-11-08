@@ -6,6 +6,9 @@
 - Erlang/OTP 26 or newer for the Erlang target
 - Node.js 20 or newer for the JavaScript target
 
+CI and Hex publishing use Ubuntu 24.04 because the pinned BEAM setup action
+does not support Ubuntu 26.04.
+
 ## Common commands
 
 - `just build` — compile the package
