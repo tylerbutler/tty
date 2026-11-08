@@ -15,6 +15,16 @@
 - `just docs` — build the Hex documentation
 - `just ci` — run the full validation workflow
 
+## Dependency updates
+
+Run `gleam deps outdated` to check for updates and `gleam deps update` to
+update the lockfile. Then run `just ci`.
+
+Keep `startest` at 0.8.0 or newer. Its `bigben` dependency requires
+`gleam_stdlib` below 1.0.0. A lower test-runner requirement lets the resolver
+downgrade to older dependencies that do not build with stdlib 1.0.
+The public package requirement still permits stdlib 1.0.
+
 ## Release workflow
 
 1. Add a changelog fragment under `.changes/unreleased/` using the project’s Changie setup.
