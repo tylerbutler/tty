@@ -90,6 +90,9 @@ On main pushes, the `Release` workflow prepares or refreshes a native
 archives, and `.changes/release.toml` semantic intent. Do not edit the intent
 file; use the workflow's release inputs to change a request.
 
+Trellis uses `release: tty v{version}` for release PR titles. The PR title
+check accepts the `release` type and applies all other title rules.
+
 Review and merge the release PR. The workflow publishes the approved merge
 commit to Hex, then records the release with an immutable `v{version}` tag
 and a GitHub release. Tag pushes do not trigger another publisher.

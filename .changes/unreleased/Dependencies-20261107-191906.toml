@@ -1,3 +1,0 @@
-package = "tty"
-kind = "Dependencies"
-body = "Update locked dependencies to the latest compatible releases, including Gleam stdlib 1.0.5 and glinter 2.19.2. The public dependency range and runtime API are unchanged."

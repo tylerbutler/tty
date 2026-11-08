@@ -1,0 +1,73 @@
+schema = "trellis.release_intent/1"
+base = "main"
+branch = "release/pending"
+base_commit = "51df732ea67f8189168f479d29607c3be1fce77e"
+
+[intent]
+bump = []
+set = []
+
+[packages.tty]
+path = "./gleam.toml"
+current = "1.1.1"
+next = "1.2.0"
+
+[inputs]
+".changes/unreleased/Added-20260819-164412.toml" = "3651b3041a31b45c3334f97875036a254ebe54a1"
+".changes/unreleased/Dependencies-20261107-191906.toml" = "3b561fa794e50f496d84006d313c7f066165af2c"
+".changes/unreleased/Fixed-20260819-160531.toml" = "78636bc00962698b3bda47f03d410a838e19a2fe"
+"@release_config" = '''
+[changelog]
+header_format = """
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)."""
+
+[[changelog.kinds]]
+bump = "minor"
+label = "Added"
+
+[[changelog.kinds]]
+bump = "patch"
+label = "Fixed"
+
+[[changelog.kinds]]
+bump = "patch"
+label = "Performance"
+
+[[changelog.kinds]]
+bump = "patch"
+label = "Changed"
+
+[[changelog.kinds]]
+bump = "major"
+label = "MajorRelease"
+
+[[changelog.kinds]]
+bump = "patch"
+label = "Reverted"
+
+[[changelog.kinds]]
+bump = "patch"
+label = "Dependencies"
+
+[[changelog.kinds]]
+bump = "patch"
+label = "Security"
+
+[publish]
+exact_tag_format = "v{version}"
+
+[publish.lifecycle]
+default = "hex"
+'''
+"gleam.toml" = "f2b0858e82c00abd5c1f42b720762886bb800375"
+"src/tty.gleam" = "c43ff4eeb41aea1281152fc4995f28d7990dd2fc"
+"src/tty/resolve_background.gleam" = "2c97283e49501ab501d9772d5328df478cd1f348"
+"src/tty/resolve_color_level.gleam" = "4af4890dd0d9d604c3c850ecd02087920de7d84d"
+"src/tty/resolve_query_background.gleam" = "6997f1805f0201a33e33b9a46194b6f0591ec96c"
+"src/tty_ffi.erl" = "7abb8571bc8c240b8bb522fdc9babdef112d5b20"
+"src/tty_ffi.mjs" = "60c1afbef89f45585828be5bf968dbc0fea54fe0"
